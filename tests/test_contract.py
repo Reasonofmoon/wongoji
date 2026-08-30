@@ -50,3 +50,21 @@ def test_server_uses_assemble():
     assert "CA.assemble" in src
     assert "CA.layout_indent" in src
     assert re.search(r"sents\[:-1\]", src) is None
+
+
+def test_static_assets_are_cache_busted():
+    """HTML은 새것인데 JS는 캐시된 옛것인 상태를 막는다.
+
+    이 상태가 되면 새 화면이 뜨는데 아무 동작도 안 한다. 원인을 코드에서 찾게 된다.
+    """
+    import hashlib
+    import re
+    html = open(os.path.join(ROOT, "web", "index.html"), encoding="utf-8").read()
+    for name, attr in (("app.css", "href"), ("app.js", "src")):
+        blob = open(os.path.join(ROOT, "web", name), "rb").read()
+        want = hashlib.sha1(blob).hexdigest()[:8]
+        m = re.search(r'%s="%s\?v=([0-9a-f]+)"' % (attr, re.escape(name)), html)
+        assert m, "%s 링크에 버전이 없다" % name
+        assert m.group(1) == want, (
+            "%s가 바뀌었는데 index.html의 버전이 옛것이다 (%s != %s). "
+            "references/정적자산_캐시.md 참조" % (name, m.group(1), want))
