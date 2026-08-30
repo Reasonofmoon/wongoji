@@ -63,8 +63,22 @@ pip install -r requirements.txt
 python -m uvicorn server:app --port 8000     # http://127.0.0.1:8000
 ```
 
+첫 화면에서 학생 글을 붙여 넣고 첨삭을 실행한다. 검토 화면에서 항목을 승인·수정·기각한 뒤 PNG 또는 학생용 PDF를 받는다.
+
+### Vercel
+
+`server.py`의 FastAPI `app`을 그대로 배포한다. 프로젝트 환경변수에 키를 넣는다.
+
+- `CHUMSAK_PROVIDER` (`xai` / `gemini` / `anthropic` / `openai`)
+- `CHUMSAK_MODEL` (예: `grok-4.6`, `claude-sonnet-5`)
+- `XAI_API_KEY` / `GEMINI_API_KEY` / `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`
+
+서버리스라 세션·설정 파일은 `/tmp`에만 남는다. 키는 대시보드 환경변수가 진실이다.
+
 LLM 계층 없이도 돌아간다(규칙 계층만, 총평은 비어 있음). `CHUMSAK_NO_LLM=1`로 강제할 수 있다.
-LLM을 붙이려면 `server.HOST`에 아래 인터페이스를 만족하는 객체를 넣는다.
+웹 화면의 **API 키**에서 제공자(xAI / Gemini / Anthropic / OpenAI)와 키를 저장한다.
+키가 없으면 이 컴퓨터의 Grok CLI 로그인(`~/.grok/auth.json`)을 xAI 호스트로 쓴다.
+직접 주입하려면 `server.HOST`에 아래 인터페이스를 만족하는 객체를 넣는다.
 
 ```python
 host.llm({"messages": [...], "system": str, "tools": [schema],
