@@ -3,17 +3,65 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>원고지 첨삭기 · 교사 검토</title>
+<title>원고지 첨삭기</title>
+<link rel="icon" href="data:,">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=Nanum+Gothic:wght@400;700&display=swap">
 <link rel="stylesheet" href="app.css">
 </head>
 <body>
 <header class="top">
-  <h1>원고지 첨삭기</h1>
-  <span class="sub">교사 검토 화면 · 1단계 프로토타입</span>
+  <div class="brand">
+    <span class="chop" aria-hidden="true">訂</span>
+    <div>
+      <h1>원고지 첨삭기</h1>
+      <p class="sub">교사 검토 · 부호가 앉은 한 장</p>
+    </div>
+  </div>
   <div class="grow"></div>
-  <span id="stateline" class="stateline">검토 대기</span>
+  <span id="llmpill" class="pill off">LLM 꺼짐</span>
+  <button id="open-settings" class="btn ghost" type="button">API 키</button>
+  <button id="to-compose" class="btn ghost hidden" type="button">새 원고</button>
+  <span id="stateline" class="stateline">원고 대기</span>
 </header>
 
+<section id="view-compose" class="view on">
+  <div class="compose">
+    <div class="paperfield">
+      <label class="paperlabel" for="src">학생 글</label>
+      <textarea id="src" rows="14" placeholder="여기에 학생 글을 붙여 넣으세요. 한 칸이 한 글자가 됩니다."></textarea>
+      <p class="count"><span id="src-count">0</span> / 4000자</p>
+    </div>
+    <aside class="compose-side">
+      <label class="field">학년
+        <select id="grade">
+          <option>초등 3학년</option>
+          <option>초등 4학년</option>
+          <option>초등 5학년</option>
+          <option selected>초등 6학년</option>
+          <option>중등 1학년</option>
+          <option>중등 2학년</option>
+          <option>중등 3학년</option>
+        </select>
+      </label>
+      <fieldset class="field">
+        <legend>이번 회차 초점 <span class="hint-inline">고르면 그것만, 안 고르면 열넷 전부</span></legend>
+        <div class="focus-chips" id="focus-chips"></div>
+      </fieldset>
+      <div class="samples">
+        <button class="chip" type="button" data-sample="elem">초등 예시</button>
+        <button class="chip" type="button" data-sample="mid">중등 예시</button>
+      </div>
+      <label class="opt"><input type="checkbox" id="indirect"> 간접 첨삭 (정답을 □로)</label>
+      <button id="run" class="btn primary wide" type="button">첨삭 실행</button>
+      <button id="load-recent" class="btn ghost wide" type="button">최근 검토 이어보기</button>
+      <p class="msg" id="compose-msg"></p>
+      <p class="note" id="healthline">서버 확인 중…</p>
+    </aside>
+  </div>
+</section>
+
+<section id="view-review" class="view">
 <main>
   <section class="sheetpane">
     <div class="toolbar">
@@ -26,15 +74,15 @@
 
   <aside class="side">
     <div class="tabs">
-      <button class="tab on" data-tab="items">교정 항목 <span id="cnt-items">0</span></button>
-      <button class="tab" data-tab="gate">게이트 반려 <span id="cnt-gate">0</span></button>
-      <button class="tab" data-tab="review">총평</button>
+      <button class="tab on" data-tab="items" type="button">교정 항목 <span id="cnt-items">0</span></button>
+      <button class="tab" data-tab="gate" type="button">게이트 반려 <span id="cnt-gate">0</span></button>
+      <button class="tab" data-tab="review" type="button">총평</button>
     </div>
 
     <div class="tabpane on" id="pane-items">
       <div class="bulk">
-        <button id="approve-all" class="btn sm">규칙 계층 일괄 승인</button>
-        <button id="reset-all" class="btn sm ghost">되돌리기</button>
+        <button id="approve-all" class="btn sm" type="button">규칙 계층 일괄 승인</button>
+        <button id="reset-all" class="btn sm ghost" type="button">되돌리기</button>
       </div>
       <ol class="items" id="items"></ol>
     </div>
@@ -51,12 +99,44 @@
     </div>
 
     <div class="foot">
-      <button id="export-png" class="btn">첨삭본 내보내기</button>
-      <button id="return" class="btn primary">학생에게 돌려주기</button>
+      <button id="export-png" class="btn" type="button">첨삭본 PNG</button>
+      <button id="return" class="btn primary" type="button">학생에게 돌려주기</button>
       <p class="msg" id="msg"></p>
     </div>
   </aside>
 </main>
+</section>
+
+<div id="overlay" class="overlay hidden" role="status">
+  <div class="overlay-card">
+    <span class="chop spin" aria-hidden="true">訂</span>
+    <p id="overlay-text">원고지에 앉히는 중…</p>
+  </div>
+</div>
+
+<div id="settings" class="drawer hidden" role="dialog" aria-labelledby="set-title">
+  <div class="drawer-panel">
+    <h2 id="set-title">BYOK 모델 연결</h2>
+    <p class="note">자기 키를 붙여 넣습니다. 키는 이 컴퓨터의 <code>data/settings.json</code>에만 남고 git에 올라가지 않습니다. 목록은 2026-08 공식 API 문서 기준입니다.</p>
+    <label class="field">제공자
+      <select id="set-provider"></select>
+    </label>
+    <label class="field">모델
+      <select id="set-model"></select>
+    </label>
+    <label class="field hidden" id="set-custom-wrap">모델 ID 직접 입력
+      <input id="set-model-custom" type="text" placeholder="예: grok-4.6">
+    </label>
+    <label class="field">API 키 <span class="hint-inline" id="set-key-hint"></span>
+      <input id="set-key" type="password" autocomplete="off" placeholder="붙여 넣기">
+    </label>
+    <div class="bulk">
+      <button id="save-settings" class="btn primary" type="button">저장하고 연결</button>
+      <button id="close-settings" class="btn ghost" type="button">닫기</button>
+    </div>
+    <p class="msg" id="set-msg"></p>
+  </div>
+</div>
 
 <script src="app.js"></script>
 </body>
