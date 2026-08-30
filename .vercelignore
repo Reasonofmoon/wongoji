@@ -1,0 +1,14 @@
+.claude
+.playwright-mcp
+_workspace
+.pytest_cache
+.venv
+out
+data
+docs
+examples
+tests
+tasks
+*.png
+uvicorn.log
+.git
