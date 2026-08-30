@@ -136,9 +136,8 @@ def session_count():
 
 # ---------------------------------------------------------------- 파이프라인
 def make_spec(text, drawn, review, extra=None):
-    lines = max(1, len(text) // 18 + text.count("\n") + 1)
     spec = {"text": text, "indent": CA.layout_indent(text), "ncols": 20,
-            "nrows": 2 * lines + 4, "double_space": True,
+            "double_space": True,
             "corrections": drawn, "review": review or {}}
     if extra:
         spec.update(extra)
