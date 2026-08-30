@@ -8,6 +8,25 @@ import urllib.request
 DEFAULT_MODEL = "gpt-5.4"
 
 
+def _with_images(messages, images):
+    """OpenAI 형식: content를 [text, image_url(data URI)] 배열로 만든다."""
+    messages = list(messages or [])
+    if not images:
+        return messages
+    blocks = [{"type": "image_url",
+               "image_url": {"url": "data:%s;base64,%s"
+                                    % (img.get("media_type") or "image/jpeg", img["data"])}}
+              for img in images]
+    for i, m in enumerate(messages):
+        if m.get("role") == "user":
+            text = m.get("content")
+            head = [{"type": "text", "text": text}] if isinstance(text, str) and text else []
+            messages[i] = {"role": "user", "content": head + blocks}
+            return messages
+    messages.append({"role": "user", "content": blocks})
+    return messages
+
+
 class Host:
     def __init__(self, model=None, api_key=None, base_url=None):
         self._model = model or os.environ.get("CHUMSAK_MODEL", DEFAULT_MODEL)
@@ -39,7 +58,7 @@ class Host:
             "max_tokens": int(req.get("max_tokens") or 3000),
             "temperature": 0.2,
             "messages": ([{"role": "system", "content": req.get("system") or ""}]
-                         + list(req.get("messages") or [])),
+                         + _with_images(req.get("messages"), req.get("images"))),
             "tools": tools,
             "tool_choice": choice,
         }
