@@ -15,6 +15,26 @@ import os
 DEFAULT_MODEL = "claude-sonnet-5"
 
 
+def _with_images(messages, images):
+    """Anthropic 형식: content를 [image..., text] 블록 배열로 만든다."""
+    messages = list(messages or [])
+    if not images:
+        return messages
+    blocks = [{"type": "image",
+               "source": {"type": "base64",
+                          "media_type": img.get("media_type") or "image/jpeg",
+                          "data": img["data"]}}
+              for img in images]
+    for i, m in enumerate(messages):
+        if m.get("role") == "user":
+            text = m.get("content")
+            tail = [{"type": "text", "text": text}] if isinstance(text, str) and text else []
+            messages[i] = {"role": "user", "content": blocks + (tail or list(text or []))}
+            return messages
+    messages.append({"role": "user", "content": blocks})
+    return messages
+
+
 class Host:
     def __init__(self, model=None, api_key=None):
         import anthropic                      # pip install anthropic
@@ -25,14 +45,19 @@ class Host:
         return self._model
 
     def llm(self, req):
-        """chumsak_app이 넘기는 요청 딕셔너리를 messages.create 호출로 옮긴다."""
+        """chumsak_app이 넘기는 요청 딕셔너리를 messages.create 호출로 옮긴다.
+
+        req["images"]가 있으면 첫 사용자 메시지를 이미지+텍스트 블록으로 바꾼다.
+        원고지 OCR이 이 경로를 쓴다.
+        """
+        messages = _with_images(req.get("messages"), req.get("images"))
         msg = self._cli.messages.create(
             model=req.get("model") or self._model,
             max_tokens=req.get("max_tokens", 3000),
             system=req.get("system", ""),
             tools=req.get("tools") or [],
             tool_choice=req.get("tool_choice") or {"type": "auto"},
-            messages=req["messages"],
+            messages=messages,
         )
         tool_use = None
         for blk in msg.content:

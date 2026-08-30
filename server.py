@@ -10,13 +10,14 @@ import os
 import time
 import uuid
 
-from fastapi import FastAPI
+from fastapi import FastAPI, File, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 import chumsak_app as CA
 import llm_host as LH
+import ocr_wongoji as OCR
 import wongoji_render as WR
 import wongoji_svg as WS
 
@@ -28,8 +29,10 @@ if ON_VERCEL:
     os.environ.setdefault("HOME", "/tmp")
 OUT = os.path.join(DATA_ROOT, "out")
 SESS_DIR = os.path.join(DATA_ROOT, "data", "sessions")
+OCR_DIR = os.path.join(DATA_ROOT, "data", "ocr")
 os.makedirs(OUT, exist_ok=True)
 os.makedirs(SESS_DIR, exist_ok=True)
+os.makedirs(OCR_DIR, exist_ok=True)
 
 
 def load_dotenv():
@@ -49,7 +52,23 @@ load_dotenv()
 
 app = FastAPI(title="원고지 첨삭기")
 MAX_TEXT = 4000
+MAX_IMAGE_BYTES = 8 * 1024 * 1024
+MAX_UPLOAD_PAGES = 12
 INDEX_PATH = os.path.join(SESS_DIR, "_index.json")
+
+SAMPLES_PATH = os.path.join(HERE, "samples.json")
+
+
+def load_samples():
+    """앱에 들어 있는 시험용 원고. 정답 span은 담지 않는다 — 본문과 요약만."""
+    if not os.path.isfile(SAMPLES_PATH):
+        return []
+    try:
+        with open(SAMPLES_PATH, encoding="utf-8") as fh:
+            return (json.load(fh) or {}).get("samples") or []
+    except (ValueError, OSError):
+        return []
+
 
 DEMO_TEXT = ("어제 나는 친구와같이 놀이 터에서 놀았다. 그런데 갑자기 비 왔다 "
              "그래서 우리는 집으로 뛰어갔다. 아주 정말 재미있었다")
@@ -156,13 +175,41 @@ def run_pipeline(text, grade="초등 6학년", focus=None, llm_items=8, indirect
             "spec": spec}
 
 
+# ---------------------------------------------------------------- OCR 저장소
+def ocr_path(oid):
+    return os.path.join(OCR_DIR, "%s.json" % oid)
+
+
+def save_ocr(rec):
+    with open(ocr_path(rec["id"]), "w", encoding="utf-8") as fh:
+        json.dump(rec, fh, ensure_ascii=False)
+    return rec
+
+
+def load_ocr(oid):
+    """이미지는 저장하지 않는다. 칸 격자만 남는다."""
+    if not oid or not str(oid).isalnum():
+        return None
+    path = ocr_path(oid)
+    if not os.path.isfile(path):
+        return None
+    with open(path, encoding="utf-8") as fh:
+        return json.load(fh)
+
+
 # ---------------------------------------------------------------- 모델
 class ChumsakIn(BaseModel):
-    text: str
+    text: str = ""
     grade: str = "초등 6학년"
     focus: list[str] | None = None
     llm_items: int = 8
     indirect: bool = False
+    ocr_id: str | None = None
+
+
+class OcrConfirmIn(BaseModel):
+    ocr_id: str
+    pages: list[dict]
 
 
 class ExportIn(BaseModel):
@@ -183,6 +230,16 @@ class SettingsIn(BaseModel):
 @app.post("/api/chumsak")
 def api_chumsak(body: ChumsakIn):
     text = (body.text or "").strip()
+    if body.ocr_id:
+        # 사진에서 온 원고는 교사가 확인한 본문만 쓴다. 클라이언트가 보낸 text는 버린다.
+        rec = load_ocr(body.ocr_id)
+        if rec is None:
+            return JSONResponse({"error": "인식 결과를 찾을 수 없습니다."}, status_code=404)
+        if not rec.get("confirmed"):
+            return JSONResponse(
+                {"error": "확인하지 않은 인식 결과입니다. 칸을 확인한 뒤 첨삭하세요."},
+                status_code=409)
+        text = (rec.get("text") or "").strip()
     if not text:
         return JSONResponse({"error": "본문이 비어 있습니다."}, status_code=400)
     if len(text) > MAX_TEXT:
@@ -196,6 +253,93 @@ def api_chumsak(body: ChumsakIn):
     return {"session": sid, "svg": res["svg"], "data": res["data"],
             "gate": res["gate"], "counts": res["counts"],
             "elapsed_s": round(time.time() - t0, 2)}
+
+
+@app.post("/api/ocr")
+async def api_ocr(files: list[UploadFile] = File(...)):
+    """원고지 사진 -> 칸 격자. **본문 텍스트는 여기서 주지 않는다.**
+
+    교사가 /api/ocr/confirm 으로 칸을 확인해야 본문이 나온다. 확인을 건너뛰면
+    OCR 오인식이 학생 오류로 첨삭된다. 그 구분은 기계가 할 수 없다.
+    """
+    if not files:
+        return JSONResponse({"error": "이미지를 올려 주세요."}, status_code=400)
+    if len(files) > MAX_UPLOAD_PAGES:
+        return JSONResponse({"error": "한 번에 %d장까지 올릴 수 있습니다."
+                             % MAX_UPLOAD_PAGES}, status_code=400)
+    ordered = sorted(files, key=lambda f: OCR.natural_key(f.filename or ""))
+
+    pages, warnings, errors = [], [], []
+    for i, up in enumerate(ordered, 1):
+        blob = await up.read()
+        if not blob:
+            continue
+        if len(blob) > MAX_IMAGE_BYTES:
+            errors.append("%s: 파일이 너무 큽니다(%.1fMB)"
+                          % (up.filename, len(blob) / 1048576))
+            continue
+        media = OCR.media_type_of(up.filename, up.content_type)
+        page, warns = None, []
+        for provider, host in LH.iter_hosts():
+            try:
+                page, warns = OCR.read_page(blob, media, host, page=i)
+                break
+            except Exception as exc:
+                errors.append("%s(%s): %s" % (up.filename, provider, exc))
+        del blob                       # 이미지를 디스크에 남기지 않는다
+        if page is None:
+            continue
+        pages.append(page)
+        warnings.extend("%d쪽: %s" % (i, w) for w in warns)
+
+    if not pages:
+        return JSONResponse(
+            {"error": "사진을 읽지 못했습니다. 붙여넣기로 입력할 수 있습니다.",
+             "detail": errors[:3]}, status_code=502)
+
+    oid = uuid.uuid4().hex[:12]
+    rec = {"id": oid, "created": time.time(), "ncols": OCR.NCOLS, "pages": pages,
+           "warnings": warnings + errors, "confirmed": False, "text": None}
+    save_ocr(rec)
+    return {"ocr_id": oid, "ncols": OCR.NCOLS, "pages": pages,
+            "low_conf": OCR.low_confidence(pages),
+            "warnings": rec["warnings"], "confirmed": False}
+
+
+@app.post("/api/ocr/confirm")
+def api_ocr_confirm(body: OcrConfirmIn):
+    """교사가 고친 칸을 받아 본문을 확정한다. 여기서만 본문이 나온다."""
+    rec = load_ocr(body.ocr_id)
+    if rec is None:
+        return JSONResponse({"error": "인식 결과를 찾을 수 없습니다."}, status_code=404)
+    pages = []
+    for i, page in enumerate(body.pages or [], 1):
+        rows, _notes = OCR.normalize_rows(page.get("rows"), rec.get("ncols") or OCR.NCOLS)
+        pages.append({"page": page.get("page") or i,
+                      "ncols": rec.get("ncols") or OCR.NCOLS, "rows": rows})
+    if not pages:
+        return JSONResponse({"error": "확인할 칸이 없습니다."}, status_code=400)
+    text = OCR.grid_to_text(pages)
+    if not text.strip():
+        return JSONResponse({"error": "본문이 비어 있습니다."}, status_code=400)
+    if len(text) > MAX_TEXT:
+        return JSONResponse({"error": "본문이 너무 깁니다(%d자). %d자까지."
+                             % (len(text), MAX_TEXT)}, status_code=400)
+    rec.update({"pages": pages, "text": text, "confirmed": True,
+                "confirmed_at": time.time()})
+    save_ocr(rec)
+    return {"ocr_id": rec["id"], "text": text, "confirmed": True,
+            "chars": len(text)}
+
+
+@app.get("/api/samples")
+def api_samples():
+    """오류가 든 시험용 원고 목록. 누구나 앱 성능을 직접 재 볼 수 있게 한다.
+
+    `known`은 사람이 표시해 둔 오류 건수다. 앱이 표시한 부호와 자동으로 대조하지
+    않는다 — 자동 채점은 정답 span이 필요하고, 그것은 `tests/corpus/`의 일이다.
+    """
+    return {"samples": load_samples()}
 
 
 @app.get("/api/session")

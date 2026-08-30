@@ -4,6 +4,7 @@ out/
 .venv/
 .env
 data/sessions/*.json
+data/ocr/*.json
 data/settings.json
 _*.json
 uvicorn.log
@@ -12,3 +13,5 @@ uvicorn.log
 .vercel
 compose-*.png
 review-*.png
+_workspace/
+.bkit/

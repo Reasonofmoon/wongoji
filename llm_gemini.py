@@ -45,6 +45,21 @@ def _forced_name(tool_choice):
     return None
 
 
+def _parts(req):
+    """이미지가 있으면 inline_data 파트를 먼저 넣는다. 원고지 OCR이 이 경로를 쓴다."""
+    parts = []
+    for img in req.get("images") or []:
+        parts.append({"inline_data": {"mime_type": img.get("media_type") or "image/jpeg",
+                                      "data": img["data"]}})
+    for m in req.get("messages") or []:
+        if m.get("role") != "user":
+            continue
+        content = m.get("content")
+        if isinstance(content, str) and content:
+            parts.append({"text": content})
+    return parts or [{"text": ""}]
+
+
 class Host:
     def __init__(self, model=None, api_key=None):
         self._model = model or os.environ.get("CHUMSAK_MODEL", DEFAULT_MODEL)
@@ -59,10 +74,7 @@ class Host:
         name = _forced_name(req.get("tool_choice"))
         body = {
             "systemInstruction": {"parts": [{"text": req.get("system") or ""}]},
-            "contents": [{"role": "user", "parts": [
-                {"text": m.get("content") or ""} for m in req.get("messages") or []
-                if m.get("role") == "user"
-            ]}],
+            "contents": [{"role": "user", "parts": _parts(req)}],
             "generationConfig": {
                 "maxOutputTokens": int(req.get("max_tokens") or 3000),
                 "temperature": 0.2,

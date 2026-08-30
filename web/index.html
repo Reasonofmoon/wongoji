@@ -7,7 +7,7 @@
 <link rel="icon" href="data:,">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=Nanum+Gothic:wght@400;700&display=swap">
-<link rel="stylesheet" href="app.css">
+<link rel="stylesheet" href="app.css?v=74d258f0">
 </head>
 <body>
 <header class="top">
@@ -31,6 +31,11 @@
       <label class="paperlabel" for="src">학생 글</label>
       <textarea id="src" rows="14" placeholder="여기에 학생 글을 붙여 넣으세요. 한 칸이 한 글자가 됩니다."></textarea>
       <p class="count"><span id="src-count">0</span> / 4000자</p>
+      <div class="photoin">
+        <input id="photo" type="file" accept="image/*" multiple hidden>
+        <button id="pick-photo" class="btn ghost" type="button">원고지 사진 올리기</button>
+        <span class="hint-inline">여러 장을 한 번에. 읽은 뒤 칸을 확인하고 첨삭합니다</span>
+      </div>
     </div>
     <aside class="compose-side">
       <label class="field">학년
@@ -48,16 +53,40 @@
         <legend>이번 회차 초점 <span class="hint-inline">고르면 그것만, 안 고르면 열넷 전부</span></legend>
         <div class="focus-chips" id="focus-chips"></div>
       </fieldset>
-      <div class="samples">
-        <button class="chip" type="button" data-sample="elem">초등 예시</button>
-        <button class="chip" type="button" data-sample="mid">중등 예시</button>
-      </div>
+      <fieldset class="field">
+        <legend>성능 실험용 원고 <span class="hint-inline">오류가 몇 건인지 아는 글로 직접 재 보세요</span></legend>
+        <div class="samples" id="samples"></div>
+        <p class="note" id="sample-note"></p>
+      </fieldset>
       <label class="opt"><input type="checkbox" id="indirect"> 간접 첨삭 (정답을 □로)</label>
       <button id="run" class="btn primary wide" type="button">첨삭 실행</button>
       <button id="load-recent" class="btn ghost wide" type="button">최근 검토 이어보기</button>
       <p class="msg" id="compose-msg"></p>
       <p class="note" id="healthline">서버 확인 중…</p>
     </aside>
+  </div>
+</section>
+
+<section id="view-confirm" class="view">
+  <div class="confirm">
+    <section class="shots">
+      <h2 class="pane-title">원본 사진</h2>
+      <div id="shots" class="shotlist"></div>
+    </section>
+    <section class="gridpane">
+      <div class="toolbar">
+        <h2 class="pane-title">읽은 칸 <span class="hint-inline">한 칸이 한 글자입니다. 빈 칸은 비워 둡니다</span></h2>
+        <span id="confirm-count" class="stateline"></span>
+      </div>
+      <div id="ocrgrid" class="ocrgrid"></div>
+      <ul id="ocrwarn" class="warnlist"></ul>
+      <div class="foot">
+        <button id="confirm-ocr" class="btn primary">확인 완료 — 첨삭 실행</button>
+        <button id="cancel-ocr" class="btn ghost">취소</button>
+        <p class="msg" id="confirm-msg"></p>
+      </div>
+      <p class="note">인식이 틀린 칸을 고쳐 주세요. <strong>학생이 틀리게 쓴 맞춤법은 그대로 두어야</strong> 첨삭이 됩니다.</p>
+    </section>
   </div>
 </section>
 
@@ -68,6 +97,7 @@
       <div class="chips" id="kindchips"></div>
       <label class="opt"><input type="checkbox" id="hidepending"> 미검토 부호 숨기기</label>
     </div>
+    <p class="trialline" id="trialline"></p>
     <div class="sheetwrap" id="sheetwrap"></div>
     <p class="hint">부호를 누르면 오른쪽 항목이 선택됩니다. 기각한 항목은 지면에서 흐려지고, 내보낼 때 되살림표로 남습니다.</p>
   </section>
@@ -138,6 +168,6 @@
   </div>
 </div>
 
-<script src="app.js"></script>
+<script src="app.js?v=673d51c4"></script>
 </body>
 </html>

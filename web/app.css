@@ -179,3 +179,37 @@ main{display:grid;grid-template-columns:minmax(0,1fr) 420px;gap:18px;padding:18p
 .drawer-panel input[type="password"],.drawer-panel input[type="text"]{
   display:block;width:100%;margin-top:6px;padding:8px;border:1px solid var(--line);
   font-family:var(--ui);font-size:13px;background:#fff}
+
+/* ---------- 사진 입력과 칸 확인 ---------- */
+.photoin{display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap}
+.confirm{display:grid;grid-template-columns:minmax(240px,1fr) minmax(340px,1.35fr);
+  gap:20px;padding:20px;align-items:start}
+.shotlist{display:flex;flex-direction:column;gap:12px;max-height:72vh;overflow:auto}
+.shotlist figure{margin:0;background:var(--card);border:1px solid var(--line);padding:8px}
+.shotlist img{width:100%;display:block}
+.shotlist figcaption{font-size:12px;color:var(--mut);margin-top:6px}
+.pane-title{font-family:var(--serif);font-size:16px;margin:0 0 10px}
+.ocrgrid{background:var(--paper);border:1px solid var(--line);padding:12px;
+  max-height:56vh;overflow:auto}
+.ocrrow{display:flex;align-items:center;gap:6px;margin-bottom:3px}
+.ocrrow .rn{width:24px;text-align:right;font-size:11px;color:var(--mut);flex:none}
+.ocrcells{display:flex;gap:1px}
+.ocrcells input{width:26px;height:26px;text-align:center;padding:0;flex:none;
+  border:1px solid var(--line);background:#fff;font-family:var(--serif);font-size:15px;
+  color:var(--ink);border-radius:0}
+.ocrcells input:focus{outline:2px solid var(--red);outline-offset:-2px;z-index:1}
+.ocrcells input.low{background:#fdf0d8;border-color:var(--warn)}
+.ocrrow.lowrow .rn{color:var(--warn);font-weight:700}
+.warnlist{margin:10px 0 0;padding-left:18px;color:var(--warn);font-size:12px}
+.warnlist:empty{display:none}
+@media (max-width:860px){.confirm{grid-template-columns:1fr}.shotlist{max-height:34vh}}
+
+/* ---------- 성능 실험용 원고 ---------- */
+.samples{display:flex;flex-wrap:wrap;gap:6px}
+.samples .chip{text-align:left}
+.samples .chip .n{color:var(--red);font-weight:700;margin-left:5px;font-size:11px}
+.samples .chip .n.zero{color:var(--ok)}
+.trialline{margin:0;padding:8px 14px;background:var(--card);border:1px solid var(--line);
+  border-left:3px solid var(--warn);font-size:12px;color:var(--mut);line-height:1.6}
+.trialline:empty{display:none}
+.trialline b{color:var(--ink)}
