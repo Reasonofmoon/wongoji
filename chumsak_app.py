@@ -477,7 +477,7 @@ def strip_span(corrections):
 
 def chumsak(text, host, kiwi, out="chumsak.png", grade="초등 6학년", focus=None,
             indirect=False, max_items=MAX_SHEET_ITEMS, llm_items=8, title=None, meta=None,
-            nrows=None, model=None, figure_title="첨삭본", caption=None):
+            rows_per_sheet=None, model=None, figure_title="첨삭본", caption=None):
     """원문 -> 첨삭본. 반환: {out, drawn, held, dropped, review, render}
 
     host가 None이면 규칙 계층만 돌고 총평은 비어 있다.
@@ -489,9 +489,8 @@ def chumsak(text, host, kiwi, out="chumsak.png", grade="초등 6학년", focus=N
                                     focus=focus, max_items=max_items)
     if indirect:
         drawn = to_indirect(drawn)
-    lines = max(1, len(text) // 18 + text.count("\n") + 1)
     spec = {"text": text, "indent": layout_indent(text), "ncols": 20,
-            "nrows": nrows or (2 * lines + 4), "double_space": True,
+            "double_space": True, "rows_per_sheet": rows_per_sheet,
             "corrections": drawn, "review": review, "out": out,
             "figure_title": figure_title,
             "caption": caption or ("규칙 계층 %d건 + LLM 계층 %d건 → 지면에 %d건"

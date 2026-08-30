@@ -327,62 +327,80 @@ def draw_mark(ax, g, kind, cells=None, boundary=None, text=None, font="DejaVu Sa
 
 
 # ---------------------------------------------------------------- render
-def render(spec):
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-    from matplotlib.patches import Circle, FancyBboxPatch
+# ---------------------------------------------------------------- 지면
+SHEET_ROWS = 20        # 한 장에 그리는 행. double_space면 실제 원고 10행 = 200자 원고지
+FIG_W = 9.6
+PANEL_LINE = 0.17      # 범례·총평의 한 줄 높이(인치)
+PAD_L, PAD_R = 1.15, 0.75   # 격자 좌우 여백(칸 단위). 왼쪽은 들여쓰기표 번호가 앉는다
+PAD_T, PAD_B = 0.95, 0.25   # 위쪽은 부호가 행 밖으로 솟는 만큼
 
-    body, ui = pick_fonts()
-    matplotlib.rcParams.update({"font.family": ui, "axes.unicode_minus": False,
-                                "savefig.dpi": spec.get("dpi", 220)})
-    ncols = spec.get("ncols", 20)
-    blocks = build_blocks(spec)
-    lay = layout(blocks, ncols)
-    if spec.get("double_space"):
-        lay = double_rows(lay)
-    nrows = spec.get("nrows") or max(10, len(lay["rows"]) + 1)
+
+def sheet_inches(ncols, nrows, axes_w_in):
+    """격자를 정비율로 그릴 때 필요한 축 높이(인치).
+
+    축에 aspect="equal"이 걸려 있어 rect 높이를 임의로 주면 matplotlib이 축을 줄이고
+    위아래에 슬랙을 남긴다. 그 슬랙이 제목과 격자 사이의 빈 띠로 보였다. 비율에서
+    높이를 역산해 슬랙을 없앤다.
+    """
     g = geom(ncols, nrows)
+    xspan = gx(g, ncols - 1) + g["cw"] + PAD_R + PAD_L
+    yspan = nrows * g["ch"] + PAD_T + PAD_B
+    return axes_w_in * yspan / xspan
 
-    corrs = spec.get("corrections", [])
-    review = spec.get("review") or {}
-    show_panel = bool(corrs or review)
-    body_text = spec.get("text", "")
 
-    # 범례·총평의 줄 수를 먼저 세어 그림 높이를 정한다(글자 넘침 방지)
-    legend_wrapped, review_wrapped = [], []
-    if show_panel:
-        for corr in corrs:
-            legend_wrapped.append(clip_lines(corr.get("reason", ""), 30, 3))
-        for key in ("good", "fix", "next"):
-            review_wrapped.append(clip_lines(review.get(key, ""), 26, 6))
-    legend_lines = sum(1 + len(w) + 0.35 for w in legend_wrapped)
-    review_lines = sum(1.4 + len(w) + 0.9 for w in review_wrapped)
-    panel_h = (max(legend_lines, review_lines) * 0.175 + 0.75) if show_panel else 0.35
-    sheet_h = 0.46 * nrows + 1.0
-    fig_h = sheet_h + panel_h
-    fig = plt.figure(figsize=(9.6, fig_h))
-    sheet_frac = (0.46 * nrows) / fig_h
-    ax = fig.add_axes([0.035, 1 - sheet_frac - 0.055, 0.93, sheet_frac])
-    ax.set_axis_off(); ax.set_aspect("equal")
+def paginate(lay, spec):
+    """행을 원고지 장 단위로 끊는다. 반환: (장당 행 수, [(시작, 끝), ...])
+
+    마지막 장도 온전한 한 장으로 그린다. 원고지는 남는 칸이 있는 채로 끝나는 것이
+    정상이고, 빈 칸이 몇 개인지가 학생에게 정보다. 다만 **빈 장은 만들지 않는다** —
+    호출측이 어림한 nrows를 그대로 믿어 열 줄 넘게 비어 있던 것이 문제였다.
+    """
+    per = int(spec.get("rows_per_sheet") or SHEET_ROWS)
+    used = len(lay["rows"])
+    pages = max(1, -(-used // per))
+    return per, [(i * per, (i + 1) * per) for i in range(pages)]
+
+
+def slice_lay(lay, a, b):
+    """한 장 몫의 배치만 잘라 낸다. 행 인덱스를 0부터 다시 센다."""
+    return {"rows": lay["rows"][a:b], "src": lay["src"][a:b], "ncols": lay["ncols"],
+            "hangs": {r - a: v for r, v in lay["hangs"].items() if a <= r < b},
+            "wrap": [r - a for r in lay["wrap"] if a <= r < b]}
+
+
+def wrap_panel(corrs, review):
+    """범례·총평 글줄을 미리 접는다. 접은 줄 수가 곧 지면 높이다."""
+    legend = [clip_lines(c.get("reason", ""), 30, 3) for c in corrs]
+    rv = [clip_lines((review or {}).get(k, ""), 30, 6) for k in ("good", "fix", "next")]
+    return legend, rv
+
+
+def panel_height(legend, rv, has_review):
+    """범례와 총평 중 긴 쪽에 맞춘다(인치). 두 칸이 나란히 서므로 max다."""
+    left = 0.66 + sum(max(1, len(w)) + 0.6 for w in legend) * PANEL_LINE
+    right = (0.80 + sum(len(w) + 2.1 for w in rv) * PANEL_LINE) if has_review else 0.0
+    return max(left, right, 0.8) + 0.30
+
+
+def draw_sheet(fig, rect, g, sub, body, size, marks, page_no, pages):
+    """한 장을 그린다. rect는 figure 비율 (left, bottom, width, height).
+
+    부호는 행 0 위로도 올라가므로 위쪽에 여유를 둔다. 제목·쪽번호는 축이 아니라
+    figure에 얹는다 — 축 안에 넣으면 격자 좌표계가 제목 높이만큼 왜곡된다.
+    """
+    from matplotlib.patches import Circle
+    ax = fig.add_axes(rect)
+    ax.set_axis_off()
+    ax.set_aspect("equal")
     draw_grid(ax, g)
-    fill_grid(ax, g, lay, body, size=spec.get("font_size", 12.5))
-
-    blanks = {(r, c): True for r, row in enumerate(lay["rows"])
+    fill_grid(ax, g, sub, body, size=size)
+    blanks = {(r, c): True for r, row in enumerate(sub["rows"])
               for c, t in enumerate(row) if t == " "}
-    resolved = []
-    for n, corr in enumerate(corrs, 1):
-        span = resolve(body_text, corr)
-        if span is None:
-            resolved.append((n, corr, None))
-            continue
-        kind = corr["kind"]
+    drawn = []
+    for n, corr, kind, cells, bnd in marks:
         if kind in BOUNDARY_KINDS:
-            bnd = locate_boundary(lay, span[1])
-            anchor = draw_mark(ax, g, kind, boundary=bnd, text=corr.get("text"),
-                               font=body) if bnd else None
+            anchor = draw_mark(ax, g, kind, boundary=bnd, text=corr.get("text"), font=body)
         else:
-            cells = locate_span(lay, span[0], span[1])
             anchor = draw_mark(ax, g, kind, cells=cells, text=corr.get("text"),
                                font=body, blanks=blanks)
         if anchor:
@@ -390,64 +408,177 @@ def render(spec):
                                 lw=1.0, zorder=8))
             ax.text(anchor[0], anchor[1], str(n), ha="center", va="center", fontsize=7.6,
                     color=RED, fontweight="bold", zorder=9)
-        resolved.append((n, corr, anchor))
+        drawn.append((n, anchor))
+    ax.set_xlim(-PAD_L, gx(g, g["ncols"] - 1) + g["cw"] + PAD_R)
+    ax.set_ylim(gy(g, g["nrows"]) - PAD_B, PAD_T)
+    if pages > 1:
+        fig.text(rect[0] + rect[2], rect[1] + rect[3] - 0.006,
+                 "%d / %d" % (page_no, pages), ha="right", va="top",
+                 fontsize=8.2, color="#9a8d80")
+    return drawn
 
-    ax.set_xlim(-1.9, gx(g, ncols - 1) + g["cw"] + 0.9)
-    ax.set_ylim(gy(g, nrows) - 0.5, 1.9)
-    ttl = spec.get("figure_title")
-    if ttl:
-        ax.text(-1.9, 1.30, ttl, fontsize=12.5, fontweight="bold", ha="left", va="bottom")
-    cap = spec.get("caption")
-    if cap:
-        ax.text(-1.9, 0.55, cap, fontsize=8.6, color="#555555", ha="left", va="bottom")
 
-    if show_panel:
-        panel_bottom, panel_top = 0.02, 1 - sheet_frac - 0.075
-        ph = panel_top - panel_bottom
-        line = 0.175 / panel_h          # 한 줄 높이(패널 축 비율)
-        pw = 0.50 if review else 0.93
-        lx = fig.add_axes([0.035, panel_bottom, pw, ph])
-        lx.set_axis_off(); lx.set_xlim(0, 1); lx.set_ylim(0, 1)
-        lx.text(0, 1.0, "교정 내용", fontsize=10.4, fontweight="bold", va="top")
-        y = 1.0 - 1.5 * line
-        for n, corr, anchor in resolved:
-            lx.add_patch(FancyBboxPatch((0.002, y - line * 0.85), 0.038, 0.038,
-                         boxstyle="circle,pad=0.002", fc="white", ec=RED, lw=1.0,
-                         transform=lx.transAxes, clip_on=False))
-            lx.text(0.021, y - line * 0.42, str(n), ha="center", va="center", fontsize=7.6,
-                    color=RED, fontweight="bold")
-            lab = KIND_LABEL.get(corr["kind"], corr["kind"])
-            if anchor is None:
-                lab += " (위치 확인 실패)"
-            lx.text(0.055, y, lab, fontsize=9.0, fontweight="bold", va="top", ha="left")
-            body_lines = legend_wrapped[n - 1] if n - 1 < len(legend_wrapped) else []
-            lx.text(0.30, y, "\n".join(body_lines), fontsize=8.5, va="top", ha="left",
-                    color="#333333", linespacing=1.45)
-            y -= line * (max(1, len(body_lines)) + 0.55)
-        if review:
-            cxa = fig.add_axes([0.555, panel_bottom, 0.41, ph])
-            cxa.set_axis_off(); cxa.set_xlim(0, 1); cxa.set_ylim(0, 1)
-            cxa.add_patch(FancyBboxPatch((0.01, 0.015), 0.98, 0.97,
-                          boxstyle="round,pad=0.010,rounding_size=0.02", fc="#FBF7F2",
-                          ec="#C8A27A", lw=1.0, transform=cxa.transAxes, clip_on=False))
-            cxa.text(0.05, 1.0 - 1.1 * line, "총평", fontsize=10.4, fontweight="bold",
-                     va="top")
-            y = 1.0 - 2.6 * line
-            for k, (h, _key) in enumerate([("잘한 점", "good"), ("고칠 점", "fix"),
-                                           ("다음에 해 볼 것", "next")]):
-                cxa.text(0.05, y, h, fontsize=9.2, fontweight="bold", va="top",
-                         color="#8B5E34")
-                body_lines = review_wrapped[k] if k < len(review_wrapped) else []
-                cxa.text(0.05, y - line * 1.05, "\n".join(body_lines), fontsize=8.6,
-                         va="top", color="#333333", linespacing=1.5)
-                y -= line * (len(body_lines) + 2.2)
+def draw_panel(fig, rect, panel_h, resolved, legend, review, rv):
+    """교정 내용과 총평. 축 안의 y를 **인치**로 두어 줄 간격이 어긋나지 않게 한다.
 
+    전에는 줄 높이를 그림 인치로 계산해 놓고 축 비율 좌표에 그대로 썼다. 지면이
+    길어질수록 실제 축은 짧아지는데 줄 간격은 그대로여서 글자가 겹쳤다.
+    """
+    from matplotlib.patches import FancyBboxPatch
+    L = PANEL_LINE
+    has_rv = bool(review)
+    lw_frac = 0.505 if has_rv else 0.95
+    lx = fig.add_axes([rect[0], rect[1], rect[2] * lw_frac, rect[3]])
+    lx.set_axis_off(); lx.set_xlim(0, 1); lx.set_ylim(panel_h, 0)
+    lx.text(0, 0.06, "교정 내용", fontsize=10.4, fontweight="bold", va="top")
+    y = 0.58
+    for n, corr, anchor in resolved:
+        lx.text(0.012, y + L * 0.40, str(n), ha="center", va="center", fontsize=7.4,
+                color=RED, fontweight="bold", zorder=3,
+                bbox=dict(boxstyle="circle,pad=0.26", fc="white", ec=RED, lw=1.0))
+        lab = KIND_LABEL.get(corr["kind"], corr["kind"])
+        if anchor is None:
+            lab += " (위치 확인 실패)"
+        lx.text(0.045, y, lab, fontsize=9.0, fontweight="bold", va="top", ha="left")
+        lines = legend[n - 1] if n - 1 < len(legend) else []
+        lx.text(0.26, y, "\n".join(lines), fontsize=8.5, va="top", ha="left",
+                color="#333333", linespacing=1.5)
+        y += L * (max(1, len(lines)) + 0.6)
+    if not has_rv:
+        return
+    cx = fig.add_axes([rect[0] + rect[2] * 0.545, rect[1], rect[2] * 0.455, rect[3]])
+    cx.set_axis_off(); cx.set_xlim(0, 1); cx.set_ylim(panel_h, 0)
+    cx.add_patch(FancyBboxPatch((0.012, 0.06), 0.976, panel_h - 0.16,
+                 boxstyle="round,pad=0.006,rounding_size=0.02", fc="#FBF7F2",
+                 ec="#C8A27A", lw=1.0, clip_on=False))
+    cx.text(0.055, 0.20, "총평", fontsize=10.4, fontweight="bold", va="top")
+    y = 0.72
+    for k, head in enumerate(("잘한 점", "고칠 점", "다음에 해 볼 것")):
+        cx.text(0.055, y, head, fontsize=9.2, fontweight="bold", va="top", color="#8B5E34")
+        lines = rv[k] if k < len(rv) else []
+        cx.text(0.055, y + L * 1.05, "\n".join(lines), fontsize=8.6, va="top",
+                color="#333333", linespacing=1.55)
+        y += L * (len(lines) + 2.1)
+
+
+def render(spec):
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    body, ui = pick_fonts()
+    matplotlib.rcParams.update({"font.family": ui, "axes.unicode_minus": False,
+                                "savefig.dpi": spec.get("dpi", 220)})
+    ncols = spec.get("ncols", 20)
+    lay = layout(build_blocks(spec), ncols)
+    if spec.get("double_space"):
+        lay = double_rows(lay)
+    per, chunks = paginate(lay, spec)
+    body_text = spec.get("text", "")
+    corrs = spec.get("corrections", [])
+    review = spec.get("review") or {}
+    size = spec.get("font_size", 12.5)
+
+    # 부호를 장별로 나눈다. 번호는 문서 전체에서 1부터 이어진다.
+    per_page = [[] for _ in chunks]
+    resolved_meta = []
+    for n, corr in enumerate(corrs, 1):
+        span = resolve(body_text, corr)
+        kind = corr["kind"]
+        row = None
+        cells = bnd = None
+        if span is not None:
+            if kind in BOUNDARY_KINDS:
+                bnd = locate_boundary(lay, span[1])
+                row = bnd[0] if bnd else None
+            else:
+                cells = locate_span(lay, span[0], span[1])
+                row = cells[0][0] if cells else None
+        if row is None:
+            resolved_meta.append((n, corr, None))
+            continue
+        p = min(row // per, len(chunks) - 1)
+        a = chunks[p][0]
+        if kind in BOUNDARY_KINDS:
+            per_page[p].append((n, corr, kind, None, (bnd[0] - a, bnd[1])))
+        else:
+            per_page[p].append((n, corr, kind, [(r - a, c) for r, c in cells], None))
+        resolved_meta.append((n, corr, p))
+
+    legend, rv = wrap_panel(corrs, review)
+    show_panel = bool(corrs or review)
+    panel_h = panel_height(legend, rv, bool(review)) if show_panel else 0.0
+
+    head1 = 0.80 if (spec.get("figure_title") or spec.get("caption")) else 0.22
+    headn = 0.26
+    sheet_h = sheet_inches(ncols, per, 0.91 * FIG_W)
+    heads = [head1] + [headn] * (len(chunks) - 1)
     out = spec.get("out", "wongoji.png")
-    fig.savefig(out, bbox_inches="tight", facecolor="white")
-    plt.close(fig)
-    unresolved = [n for n, _c, a in resolved if a is None]
-    return {"out": out, "rows_used": len(lay["rows"]), "rows_drawn": nrows,
-            "corrections": len(corrs), "unresolved": unresolved,
+    is_pdf = str(out).lower().endswith(".pdf")
+
+    anchors = {}
+
+    def sheets_onto(fig, fig_h, pages_idx, first_head):
+        top = 1.0 - 0.012
+        for i, p in enumerate(pages_idx):
+            head = first_head if i == 0 else headn
+            top -= head / fig_h
+            h = sheet_h / fig_h
+            rect = [0.045, top - h, 0.91, h]
+            got = draw_sheet(fig, rect, geom(ncols, per),
+                             slice_lay(lay, *chunks[p]), body, size,
+                             per_page[p], p + 1, len(chunks))
+            for n, a in got:
+                anchors[n] = a
+            top -= h + 0.014
+        return top
+
+    def head_text(fig, fig_h):
+        ttl = spec.get("figure_title")
+        cap = spec.get("caption")
+        if ttl:
+            fig.text(0.045, 1.0 - 0.30 / fig_h, ttl, fontsize=12.5,
+                     fontweight="bold", ha="left", va="top")
+        if cap:
+            fig.text(0.045, 1.0 - 0.60 / fig_h, cap, fontsize=8.6, color="#555555",
+                     ha="left", va="top")
+
+    if is_pdf:
+        from matplotlib.backends.backend_pdf import PdfPages
+        with PdfPages(out) as pdf:
+            for p in range(len(chunks)):
+                fh = (head1 if p == 0 else headn) + sheet_h + 0.35
+                fig = plt.figure(figsize=(FIG_W, fh))
+                if p == 0:
+                    head_text(fig, fh)
+                sheets_onto(fig, fh, [p], head1 if p == 0 else headn)
+                pdf.savefig(fig, facecolor="white")
+                plt.close(fig)
+            if show_panel:
+                resolved = [(n, c, anchors.get(n)) for n, c, _p in resolved_meta]
+                fh = panel_h + 0.40
+                fig = plt.figure(figsize=(FIG_W, fh))
+                draw_panel(fig, [0.045, 0.22 / fh, 0.91, panel_h / fh], panel_h,
+                           resolved, legend, review, rv)
+                pdf.savefig(fig, facecolor="white")
+                plt.close(fig)
+    else:
+        fig_h = sum(heads) + sheet_h * len(chunks) + 0.014 * len(chunks) + panel_h + 0.30
+        fig = plt.figure(figsize=(FIG_W, fig_h))
+        head_text(fig, fig_h)
+        top = sheets_onto(fig, fig_h, list(range(len(chunks))), head1)
+        if show_panel:
+            resolved = [(n, c, anchors.get(n)) for n, c, _p in resolved_meta]
+            ph = panel_h / fig_h
+            draw_panel(fig, [0.045, max(0.008, top - ph - 0.012), 0.91, ph], panel_h,
+                       resolved, legend, review, rv)
+        fig.savefig(out, facecolor="white")
+        plt.close(fig)
+
+    unresolved = [n for n, _c, p in resolved_meta if p is None]
+    return {"out": out, "rows_used": len(lay["rows"]), "rows_drawn": per * len(chunks),
+            "pages": len(chunks), "corrections": len(corrs), "unresolved": unresolved,
+            "sheet_rows": per,
             "font": body, "wrap_rows": lay["wrap"], "hangs": list(lay["hangs"].keys())}
 
 
@@ -458,7 +589,8 @@ def export_layout(spec):
     lay = layout(blocks, ncols)
     if spec.get("double_space"):
         lay = double_rows(lay)
-    nrows = spec.get("nrows") or max(10, len(lay["rows"]) + 1)
+    per, chunks = paginate(lay, spec)
+    nrows = per * len(chunks)
     body_text = spec.get("text", "")
 
     cells = []
