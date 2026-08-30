@@ -11,7 +11,7 @@ import time
 import uuid
 
 from fastapi import FastAPI
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -285,5 +285,13 @@ def api_settings(body: SettingsIn):
         return JSONResponse({"error": str(exc)}, status_code=400)
 
 
+WEB_DIR = os.path.join(HERE, "web")
+
+
+@app.get("/")
+def index_page():
+    return FileResponse(os.path.join(WEB_DIR, "index.html"))
+
+
 app.mount("/out", StaticFiles(directory=OUT), name="out")
-app.mount("/", StaticFiles(directory=os.path.join(HERE, "web"), html=True), name="web")
+app.mount("/", StaticFiles(directory=WEB_DIR, html=True), name="web")
