@@ -1,0 +1,13 @@
+[project]
+name = "wongoji"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "matplotlib>=3.8",
+    "kiwipiepy>=0.20",
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+]
+
+[tool.vercel]
+entrypoint = "server:app"
