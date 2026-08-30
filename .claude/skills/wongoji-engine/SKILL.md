@@ -1,6 +1,6 @@
 ---
 name: wongoji-engine
-description: "원고지 첨삭 엔진과 FastAPI를 구현·수정한다. 규칙/LLM 계층, 검증 게이트, 파이프라인 단일화, wongoji_render 칸 좌표, SVG 빌드, 세션 저장, /api/chumsak·export·session, Anthropic 호스트, 레이아웃 테스트. 엔진·게이트·렌더러·서버를 만지거나 부호 위치가 틀렸다는 보고가 오면 반드시 사용. UI 색만 바꾸는 작업에는 쓰지 않는다."
+description: "원고지 첨삭 엔진과 FastAPI를 구현·수정한다. 규칙/LLM 계층, 검증 게이트, 파이프라인 단일화, wongoji_render 칸 좌표, SVG 빌드, 세션 저장, /api/chumsak·export·session, Anthropic 호스트, 레이아웃 테스트, 층위별 지면 상한. 엔진·게이트·렌더러·서버를 만지거나 부호 위치가 틀렸다는 보고가 오면, 또는 잡은 오류가 지면에 안 그려진다는 보고가 오면 반드시 사용. UI 색만 바꾸는 작업에는 쓰지 않는다."
 ---
 
 # 첨삭 엔진
@@ -36,11 +36,39 @@ drawn, held = focus_filter(merged, focus, max_items)
 
 들여쓰기와 stet: `spec["indent"]`는 "원문을 들여 그릴지"다. 들여쓰기표가 **승인되어 오류를 가리킬 때**만 indent=0이다. 기각되어 kind가 `stet`가 되면 원문 배치(indent=0, 첫 칸 채움)를 유지한 채 되살림표를 그린다. indent=1로 바꾸면 오류가 화면에 없어진다.
 
+## 층위별 지면 상한
+
+제품 결정: **표기(layer=표기)는 전수 표시, 내용(layer=내용)만 초점 상한.**
+
+`focus_filter`가 종류를 라운드로빈으로 돌며 `MAX_SHEET_ITEMS`에서 자르면, 맞춤법
+오류가 상한에 걸려 사라진다. "틀린 곳을 다 찾아 준다"는 약속이 여기서 깨진다.
+
+```
+표기 = [c for c in merged if c.get("layer") == "표기"]
+내용 = [c for c in merged if c.get("layer") != "표기"]
+drawn = 표기 + focus_filter(내용, focus=focus, max_items=MAX_CONTENT_ITEMS)[0]
+```
+
+지면이 모자라면 항목을 버리는 대신 `nrows`를 늘리거나 장을 나눈다. 진짜 상한은
+숫자 16이 아니라 **부호가 겹쳐 못 읽히는 지점**이다.
+
+`layer` 필드가 정확해야 이 분기가 산다. 규칙 항목은 `make()` 기본값에 기대지 말고
+유형마다 `layer`와 `type`(O1~O10, C1~C4)을 명시한다. `type`이 없으면 정확도 평가가
+그 항목을 유형 미상으로 세어 리포트가 쓸모없어진다.
+
+**진단법:** `eval_accuracy.py`를 `--held` 없이 한 번, 붙여서 한 번 돌린다. 두 점수
+차이가 크면 엔진은 찾았는데 이 분기가 잘라낸 것이다. 고칠 곳은 규칙이 아니라 여기다.
+
 ## LLM 호스트
 
 환경변수 `ANTHROPIC_API_KEY`가 있으면 `llm_anthropic.Host`를 쓴다. `CHUMSAK_NO_LLM=1`이면 끈다. `import host` / `builtins.host`는 보조 주입일 뿐 기본 경로가 아니다.
 
 구조화 출력은 tool_use `submit_chumsak`만 신뢰한다. 본문 텍스트 JSON은 파싱하지 않는다.
+
+프롬프트에 **규칙 계층이 이미 잡은 유형 코드 목록**을 넣는다. 이 정보가 없으면 LLM이
+띄어쓰기를 중복 제출하고, 그것이 `drop_overlaps`에서 버려지면서 정작 필요한 내용
+첨삭 자리를 잡아먹는다. 규칙으로 판정 가능한 표기 오류는 LLM의 일이 아니다
+(`wongoji-orthography` 참조).
 
 ## 세션과 검증
 
@@ -53,6 +81,10 @@ drawn, held = focus_filter(merged, focus, max_items)
 `tests/test_layout.py`: `examples/spec_예시.json`을 `export_layout`에 넣어 부호 n별 앵커 종류·행이 픽스처와 같아야 한다. kiwipiepy 없이 돈다.
 
 `tests/test_gate.py`: 실행결과 JSON의 dropped 사유 유형(target 없음, 범위 과대, 문장 통째, 삽입 과장, 교사 전용 부호)을 함수 단위로 재현한다.
+
+정확도 회귀는 `wongoji-eval`의 `eval_accuracy.py`가 본다. 파이프라인·상한·병합을
+만졌으면 레이아웃 테스트뿐 아니라 정확도 게이트도 돌린다. 조립 순서를 바꾸면 점수가
+조용히 떨어진다.
 
 한 규칙만 고치고 렌더러 기하를 다시 쓰지 않는다. 기하를 만지면 PNG와 SVG를 같은 spec으로 비교한다.
 
