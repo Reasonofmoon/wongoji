@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>원고지 첨삭기 · 교사 검토</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header class="top">
+  <h1>원고지 첨삭기</h1>
+  <span class="sub">교사 검토 화면 · 1단계 프로토타입</span>
+  <div class="grow"></div>
+  <span id="stateline" class="stateline">검토 대기</span>
+</header>
+
+<main>
+  <section class="sheetpane">
+    <div class="toolbar">
+      <div class="chips" id="kindchips"></div>
+      <label class="opt"><input type="checkbox" id="hidepending"> 미검토 부호 숨기기</label>
+    </div>
+    <div class="sheetwrap" id="sheetwrap"></div>
+    <p class="hint">부호를 누르면 오른쪽 항목이 선택됩니다. 기각한 항목은 지면에서 흐려지고, 내보낼 때 되살림표로 남습니다.</p>
+  </section>
+
+  <aside class="side">
+    <div class="tabs">
+      <button class="tab on" data-tab="items">교정 항목 <span id="cnt-items">0</span></button>
+      <button class="tab" data-tab="gate">게이트 반려 <span id="cnt-gate">0</span></button>
+      <button class="tab" data-tab="review">총평</button>
+    </div>
+
+    <div class="tabpane on" id="pane-items">
+      <div class="bulk">
+        <button id="approve-all" class="btn sm">규칙 계층 일괄 승인</button>
+        <button id="reset-all" class="btn sm ghost">되돌리기</button>
+      </div>
+      <ol class="items" id="items"></ol>
+    </div>
+
+    <div class="tabpane" id="pane-gate">
+      <p class="note">LLM이 냈지만 검증 게이트가 반려한 항목입니다. 학생에게는 보이지 않습니다.</p>
+      <ol class="items gate" id="gateitems"></ol>
+    </div>
+
+    <div class="tabpane" id="pane-review">
+      <label class="rv">잘한 점<textarea id="rv-good" rows="5"></textarea></label>
+      <label class="rv">고칠 점<textarea id="rv-fix" rows="5"></textarea></label>
+      <label class="rv">다음에 해 볼 것<textarea id="rv-next" rows="5"></textarea></label>
+    </div>
+
+    <div class="foot">
+      <button id="export-png" class="btn">첨삭본 내보내기</button>
+      <button id="return" class="btn primary">학생에게 돌려주기</button>
+      <p class="msg" id="msg"></p>
+    </div>
+  </aside>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>

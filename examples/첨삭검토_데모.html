@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>원고지 첨삭기 · 교사 검토</title>
+<style>
+:root{
+  --red:#C0392B; --blue:#1F4E79; --ink:#1a1a1a; --mut:#666;
+  --line:#e2e0dc; --bg:#faf9f7; --card:#fff; --ok:#2E7D52; --warn:#8B5E34;
+  --ui:'Nanum Gothic','Apple SD Gothic Neo','Malgun Gothic','Noto Sans KR',sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:var(--ui);color:var(--ink);background:var(--bg);font-size:14px}
+.grow{flex:1}
+
+.top{display:flex;align-items:baseline;gap:12px;padding:14px 20px;background:#fff;
+     border-bottom:1px solid var(--line);position:sticky;top:0;z-index:20}
+.top h1{font-size:17px;margin:0;letter-spacing:-.02em}
+.top .sub{color:var(--mut);font-size:12px}
+.stateline{font-size:12px;color:var(--warn);border:1px solid #e8dcc8;background:#FBF7F2;
+           padding:4px 10px;border-radius:20px}
+.stateline.done{color:var(--ok);border-color:#cfe6d8;background:#f2f9f5}
+
+main{display:grid;grid-template-columns:minmax(0,1fr) 420px;gap:18px;padding:18px 20px;
+     align-items:start}
+@media (max-width:1100px){main{grid-template-columns:1fr}}
+
+.sheetpane{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px}
+.toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:10px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1px solid var(--line);background:#fff;border-radius:20px;padding:3px 11px;
+      font-size:12px;cursor:pointer;color:#444}
+.chip.off{opacity:.38;text-decoration:line-through}
+.chip .n{color:var(--mut);margin-left:4px}
+.opt{font-size:12px;color:#444;display:flex;align-items:center;gap:5px;cursor:pointer}
+.sheetwrap{overflow:auto;border:1px solid #efedea;border-radius:6px;background:#fff}
+.sheetwrap svg{display:block;width:100%;height:auto}
+.hint{font-size:11.5px;color:var(--mut);margin:9px 2px 0}
+
+/* 부호 상태 */
+.mk{cursor:pointer}
+.mk .tag circle{transition:r .1s}
+.mk[data-state="rejected"]{opacity:.24}
+.mk[data-state="rejected"] path{stroke-dasharray:3 3}
+.mk[data-state="approved"] path{stroke-width:2.4}
+.mk.sel path{stroke:#0B6E4F}
+.mk.sel .tag circle{fill:#0B6E4F;stroke:#0B6E4F}
+.mk.sel .tag text{fill:#fff}
+.mk.hidden{display:none}
+
+.side{display:flex;flex-direction:column;gap:0;background:var(--card);
+      border:1px solid var(--line);border-radius:10px;overflow:hidden;
+      position:sticky;top:70px;max-height:calc(100vh - 90px)}
+.tabs{display:flex;border-bottom:1px solid var(--line);background:#fcfbfa}
+.tab{flex:1;border:0;background:none;padding:11px 6px;font-family:var(--ui);font-size:12.5px;
+     cursor:pointer;color:var(--mut);border-bottom:2px solid transparent}
+.tab.on{color:var(--ink);font-weight:700;border-bottom-color:var(--red)}
+.tab span{display:inline-block;min-width:18px;background:#eee;border-radius:9px;
+          font-size:11px;padding:0 5px;color:#555}
+.tabpane{display:none;overflow:auto;padding:12px;flex:1}
+.tabpane.on{display:block}
+
+.bulk{display:flex;gap:6px;margin-bottom:10px}
+.items{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.item{border:1px solid var(--line);border-radius:8px;padding:9px 10px;cursor:pointer;
+      background:#fff}
+.item.sel{border-color:#0B6E4F;box-shadow:0 0 0 2px rgba(11,110,79,.10)}
+.item[data-state="approved"]{background:#f6fbf8}
+.item[data-state="rejected"]{background:#faf7f7;opacity:.72}
+.item .hd{display:flex;align-items:center;gap:7px}
+.num{width:19px;height:19px;border-radius:50%;border:1.2px solid var(--red);color:var(--red);
+     font-size:10.5px;font-weight:700;display:grid;place-items:center;flex:none}
+.kind{font-weight:700;font-size:12.5px}
+.badge{font-size:10px;padding:1px 6px;border-radius:9px;border:1px solid var(--line);color:#666}
+.badge.rule{background:#eef4fb;border-color:#d6e4f5;color:#2c5d92}
+.badge.llm{background:#fdf3ef;border-color:#f5ddd3;color:#a2563a}
+.why{font-size:12px;color:#444;margin:6px 0 0;line-height:1.55}
+.tgt{font-family:'Nanum Myeongjo',serif;background:#f6f5f3;padding:1px 5px;border-radius:4px}
+.acts{display:flex;gap:5px;margin-top:8px}
+.btn{font-family:var(--ui);font-size:12px;border:1px solid var(--line);background:#fff;
+     border-radius:6px;padding:6px 11px;cursor:pointer;color:#333}
+.btn:hover{background:#f6f5f3}
+.btn.sm{padding:4px 9px;font-size:11.5px}
+.btn.ghost{color:var(--mut)}
+.btn.on-ok{background:#eaf5ef;border-color:#bcdfcc;color:#1d6b47;font-weight:700}
+.btn.on-no{background:#f7ecea;border-color:#e6c9c4;color:#983227;font-weight:700}
+.btn.primary{background:var(--ink);color:#fff;border-color:var(--ink)}
+.btn.primary:disabled{opacity:.35;cursor:not-allowed}
+.edit{width:100%;font-family:var(--ui);font-size:12px;border:1px solid var(--line);
+      border-radius:6px;padding:6px;margin-top:7px;resize:vertical}
+
+.gate .item{cursor:default;background:#fbfaf9}
+.gate .why{color:#8a4b3f}
+.note{font-size:11.5px;color:var(--mut);margin:0 0 10px;line-height:1.5}
+.rv{display:block;font-size:12px;font-weight:700;color:var(--warn);margin-bottom:12px}
+.rv textarea{display:block;width:100%;margin-top:5px;font-family:var(--ui);font-size:12.5px;
+             line-height:1.6;border:1px solid var(--line);border-radius:7px;padding:8px;
+             font-weight:400;color:var(--ink);resize:vertical}
+.foot{border-top:1px solid var(--line);padding:11px 12px;display:flex;gap:7px;
+      align-items:center;flex-wrap:wrap;background:#fcfbfa}
+.msg{font-size:11.5px;color:var(--mut);margin:0;flex-basis:100%}
+
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>원고지 첨삭기</h1>
+  <span class="sub">교사 검토 화면 · 1단계 프로토타입</span>
+  <div class="grow"></div>
+  <span id="stateline" class="stateline">검토 대기</span>
+</header>
+
+<p class="note" style="margin:0 20px 12px;padding:9px 12px;background:#FBF7F2;border:1px solid #e8dcc8;border-radius:8px">정적 데모입니다. 승인·기각·필터·총평 편집은 동작하고, 내보내기는 <code>server.py</code>를 띄운 뒤에 됩니다.</p>
+<main>
+  <section class="sheetpane">
+    <div class="toolbar">
+      <div class="chips" id="kindchips"></div>
+      <label class="opt"><input type="checkbox" id="hidepending"> 미검토 부호 숨기기</label>
+    </div>
+    <div class="sheetwrap" id="sheetwrap"></div>
+    <p class="hint">부호를 누르면 오른쪽 항목이 선택됩니다. 기각한 항목은 지면에서 흐려지고, 내보낼 때 되살림표로 남습니다.</p>
+  </section>
+
+  <aside class="side">
+    <div class="tabs">
+      <button class="tab on" data-tab="items">교정 항목 <span id="cnt-items">0</span></button>
+      <button class="tab" data-tab="gate">게이트 반려 <span id="cnt-gate">0</span></button>
+      <button class="tab" data-tab="review">총평</button>
+    </div>
+
+    <div class="tabpane on" id="pane-items">
+      <div class="bulk">
+        <button id="approve-all" class="btn sm">규칙 계층 일괄 승인</button>
+        <button id="reset-all" class="btn sm ghost">되돌리기</button>
+      </div>
+      <ol class="items" id="items"></ol>
+    </div>
+
+    <div class="tabpane" id="pane-gate">
+      <p class="note">LLM이 냈지만 검증 게이트가 반려한 항목입니다. 학생에게는 보이지 않습니다.</p>
+      <ol class="items gate" id="gateitems"></ol>
+    </div>
+
+    <div class="tabpane" id="pane-review">
+      <label class="rv">잘한 점<textarea id="rv-good" rows="5"></textarea></label>
+      <label class="rv">고칠 점<textarea id="rv-fix" rows="5"></textarea></label>
+      <label class="rv">다음에 해 볼 것<textarea id="rv-next" rows="5"></textarea></label>
+    </div>
+
+    <div class="foot">
+      <button id="export-png" class="btn">첨삭본 내보내기</button>
+      <button id="return" class="btn primary">학생에게 돌려주기</button>
+      <p class="msg" id="msg"></p>
+    </div>
+  </aside>
+</main>
+
+<script>window.__CHUMSAK__={"svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 737 528\" class=\"wongoji\" role=\"img\">\n<rect x=\"0\" y=\"0\" width=\"737\" height=\"528\" fill=\"white\"/>\n<g class=\"grid\" stroke=\"#9A9A9A\" stroke-width=\"0.8\" fill=\"none\">\n<path d=\"M 26.0 26.0 L 711.4 26.0\"/>\n<path d=\"M 26.0 60.0 L 711.4 60.0\"/>\n<path d=\"M 26.0 94.0 L 711.4 94.0\"/>\n<path d=\"M 26.0 128.0 L 711.4 128.0\"/>\n<path d=\"M 26.0 162.0 L 711.4 162.0\"/>\n<path d=\"M 26.0 196.0 L 711.4 196.0\"/>\n<path d=\"M 26.0 230.0 L 711.4 230.0\"/>\n<path d=\"M 26.0 264.0 L 711.4 264.0\"/>\n<path d=\"M 26.0 298.0 L 711.4 298.0\"/>\n<path d=\"M 26.0 332.0 L 711.4 332.0\"/>\n<path d=\"M 26.0 366.0 L 711.4 366.0\"/>\n<path d=\"M 26.0 400.0 L 711.4 400.0\"/>\n<path d=\"M 26.0 434.0 L 711.4 434.0\"/>\n<path d=\"M 26.0 468.0 L 711.4 468.0\"/>\n<path d=\"M 26.0 502.0 L 711.4 502.0\"/>\n<path d=\"M 26.0 26.0 L 26.0 502.0\"/>\n<path d=\"M 60.0 26.0 L 60.0 502.0\"/>\n<path d=\"M 94.0 26.0 L 94.0 502.0\"/>\n<path d=\"M 128.0 26.0 L 128.0 502.0\"/>\n<path d=\"M 162.0 26.0 L 162.0 502.0\"/>\n<path d=\"M 196.0 26.0 L 196.0 502.0\"/>\n<path d=\"M 230.0 26.0 L 230.0 502.0\"/>\n<path d=\"M 264.0 26.0 L 264.0 502.0\"/>\n<path d=\"M 298.0 26.0 L 298.0 502.0\"/>\n<path d=\"M 332.0 26.0 L 332.0 502.0\"/>\n<path d=\"M 371.4 26.0 L 371.4 502.0\"/>\n<path d=\"M 405.4 26.0 L 405.4 502.0\"/>\n<path d=\"M 439.4 26.0 L 439.4 502.0\"/>\n<path d=\"M 473.4 26.0 L 473.4 502.0\"/>\n<path d=\"M 507.4 26.0 L 507.4 502.0\"/>\n<path d=\"M 541.4 26.0 L 541.4 502.0\"/>\n<path d=\"M 575.4 26.0 L 575.4 502.0\"/>\n<path d=\"M 609.4 26.0 L 609.4 502.0\"/>\n<path d=\"M 643.4 26.0 L 643.4 502.0\"/>\n<path d=\"M 677.4 26.0 L 677.4 502.0\"/>\n<path d=\"M 711.4 26.0 L 711.4 502.0\"/>\n</g>\n<rect x=\"26.0\" y=\"26.0\" width=\"685.4\" height=\"476.0\" fill=\"none\" stroke=\"#333333\" stroke-width=\"1.6\"/>\n<g class=\"body\" font-family=\"'Nanum Myeongjo','AppleMyungjo','Batang',serif\" font-size=\"20\" fill=\"#111\" text-anchor=\"middle\">\n<text x=\"43.0\" y=\"84.5\" font-size=\"20\">어</text>\n<text x=\"77.0\" y=\"84.5\" font-size=\"20\">제</text>\n<text x=\"145.0\" y=\"84.5\" font-size=\"20\">나</text>\n<text x=\"179.0\" y=\"84.5\" font-size=\"20\">는</text>\n<text x=\"247.0\" y=\"84.5\" font-size=\"20\">친</text>\n<text x=\"281.0\" y=\"84.5\" font-size=\"20\">구</text>\n<text x=\"315.0\" y=\"84.5\" font-size=\"20\">와</text>\n<text x=\"349.0\" y=\"84.5\" font-size=\"20\">같</text>\n<text x=\"388.4\" y=\"84.5\" font-size=\"20\">이</text>\n<text x=\"456.4\" y=\"84.5\" font-size=\"20\">놀</text>\n<text x=\"490.4\" y=\"84.5\" font-size=\"20\">이</text>\n<text x=\"558.4\" y=\"84.5\" font-size=\"20\">터</text>\n<text x=\"592.4\" y=\"84.5\" font-size=\"20\">에</text>\n<text x=\"626.4\" y=\"84.5\" font-size=\"20\">서</text>\n<text x=\"694.4\" y=\"84.5\" font-size=\"20\">놀</text>\n<text x=\"43.0\" y=\"152.5\" font-size=\"20\">았</text>\n<text x=\"77.0\" y=\"152.5\" font-size=\"20\">다</text>\n<text x=\"111.0\" y=\"152.5\" font-size=\"20\">.</text>\n<text x=\"179.0\" y=\"152.5\" font-size=\"20\">그</text>\n<text x=\"213.0\" y=\"152.5\" font-size=\"20\">런</text>\n<text x=\"247.0\" y=\"152.5\" font-size=\"20\">데</text>\n<text x=\"315.0\" y=\"152.5\" font-size=\"20\">갑</text>\n<text x=\"349.0\" y=\"152.5\" font-size=\"20\">자</text>\n<text x=\"388.4\" y=\"152.5\" font-size=\"20\">기</text>\n<text x=\"456.4\" y=\"152.5\" font-size=\"20\">비</text>\n<text x=\"524.4\" y=\"152.5\" font-size=\"20\">왔</text>\n<text x=\"558.4\" y=\"152.5\" font-size=\"20\">다</text>\n<text x=\"626.4\" y=\"152.5\" font-size=\"20\">그</text>\n<text x=\"660.4\" y=\"152.5\" font-size=\"20\">래</text>\n<text x=\"694.4\" y=\"152.5\" font-size=\"20\">서</text>\n<text x=\"43.0\" y=\"220.5\" font-size=\"20\">우</text>\n<text x=\"77.0\" y=\"220.5\" font-size=\"20\">리</text>\n<text x=\"111.0\" y=\"220.5\" font-size=\"20\">는</text>\n<text x=\"179.0\" y=\"220.5\" font-size=\"20\">집</text>\n<text x=\"213.0\" y=\"220.5\" font-size=\"20\">으</text>\n<text x=\"247.0\" y=\"220.5\" font-size=\"20\">로</text>\n<text x=\"315.0\" y=\"220.5\" font-size=\"20\">뛰</text>\n<text x=\"349.0\" y=\"220.5\" font-size=\"20\">어</text>\n<text x=\"388.4\" y=\"220.5\" font-size=\"20\">갔</text>\n<text x=\"422.4\" y=\"220.5\" font-size=\"20\">다</text>\n<text x=\"456.4\" y=\"220.5\" font-size=\"20\">.</text>\n<text x=\"524.4\" y=\"220.5\" font-size=\"20\">아</text>\n<text x=\"558.4\" y=\"220.5\" font-size=\"20\">주</text>\n<text x=\"626.4\" y=\"220.5\" font-size=\"20\">정</text>\n<text x=\"660.4\" y=\"220.5\" font-size=\"20\">말</text>\n<text x=\"43.0\" y=\"288.5\" font-size=\"20\">재</text>\n<text x=\"77.0\" y=\"288.5\" font-size=\"20\">미</text>\n<text x=\"111.0\" y=\"288.5\" font-size=\"20\">있</text>\n<text x=\"145.0\" y=\"288.5\" font-size=\"20\">었</text>\n<text x=\"179.0\" y=\"288.5\" font-size=\"20\">다</text>\n<text x=\"213.0\" y=\"288.5\" font-size=\"20\">.</text>\n</g>\n<g class=\"marks\" font-family=\"'Nanum Myeongjo','AppleMyungjo','Batang',serif\">\n<g class=\"mk mk-punct\" data-n=\"1\" data-kind=\"punct\" data-state=\"pending\">\n<path d=\"M 566.4 115.0 L 575.4 130.0 L 584.4 115.0\" fill=\"none\" stroke=\"#C0392B\" stroke-width=\"2\" stroke-linecap=\"round\"/>\n<text x=\"575.4\" y=\"111.0\" font-size=\"13\" fill=\"#C0392B\" text-anchor=\"middle\">.</text>\n<g class=\"tag\"><circle cx=\"606.0\" cy=\"122.0\" r=\"9\" fill=\"white\" stroke=\"#C0392B\" stroke-width=\"1.2\"/><text x=\"606.0\" y=\"125.6\" font-family=\"'Nanum Gothic','Apple SD Gothic Neo','Malgun Gothic',sans-serif\" font-size=\"10\" fill=\"#C0392B\" text-anchor=\"middle\" font-weight=\"bold\">1</text></g>\n</g>\n<g class=\"mk mk-space\" data-n=\"2\" data-kind=\"space\" data-state=\"pending\">\n<path d=\"M 323.0 47.0 L 332.0 62.0 L 341.0 47.0\" fill=\"none\" stroke=\"#C0392B\" stroke-width=\"2\" stroke-linecap=\"round\"/>\n<g class=\"tag\"><circle cx=\"362.6\" cy=\"54.0\" r=\"9\" fill=\"white\" stroke=\"#C0392B\" stroke-width=\"1.2\"/><text x=\"362.6\" y=\"57.6\" font-family=\"'Nanum Gothic','Apple SD Gothic Neo','Malgun Gothic',sans-serif\" font-size=\"10\" fill=\"#C0392B\" text-anchor=\"middle\" font-weight=\"bold\">2</text></g>\n</g>\n<g class=\"mk mk-indent\" data-n=\"3\" data-kind=\"indent\" data-state=\"pending\">\n<path d=\"M 10.0 66.0 L 27.0 66.0 L 27.0 88.0 L 10.0 88.0\" fill=\"none\" stroke=\"#C0392B\" stroke-width=\"2\" stroke-linecap=\"round\"/>\n<g class=\"tag\"><circle cx=\"90.6\" cy=\"54.0\" r=\"9\" fill=\"white\" stroke=\"#C0392B\" stroke-width=\"1.2\"/><text x=\"90.6\" y=\"57.6\" font-family=\"'Nanum Gothic','Apple SD Gothic Neo','Malgun Gothic',sans-serif\" font-size=\"10\" fill=\"#C0392B\" text-anchor=\"middle\" font-weight=\"bold\">3</text></g>\n</g>\n<g class=\"mk mk-delete\" data-n=\"4\" data-kind=\"delete\" data-state=\"pending\">\n<path d=\"M 507.4 209.0 L 575.4 209.0\" fill=\"none\" stroke=\"#C0392B\" stroke-width=\"2\" stroke-linecap=\"round\"/>\n<path d=\"M 507.4 217.0 L 575.4 217.0\" fill=\"none\" stroke=\"#C0392B\" stroke-width=\"2\" stroke-linecap=\"round\"/>\n<path d=\"M 575.4 217.0 L 580.4 217.0 L 580.4 188.0\" fill=\"none\" stroke=\"#C0392B\" stroke-width=\"2\" stroke-linecap=\"round\"/>\n<path d=\"M 576.4 193.0 L 580.4 188.0 L 584.4 193.0\" fill=\"none\" stroke=\"#C0392B\" stroke-width=\"2\" stroke-linecap=\"round\"/>\n<g class=\"tag\"><circle cx=\"572.0\" cy=\"190.0\" r=\"9\" fill=\"white\" stroke=\"#C0392B\" stroke-width=\"1.2\"/><text x=\"572.0\" y=\"193.6\" font-family=\"'Nanum Gothic','Apple SD Gothic Neo','Malgun Gothic',sans-serif\" font-size=\"10\" fill=\"#C0392B\" text-anchor=\"middle\" font-weight=\"bold\">4</text></g>\n</g>\n<g class=\"mk mk-join\" data-n=\"5\" data-kind=\"join\" data-state=\"pending\">\n<path d=\"M 89.0 281.0 Q 111.0 270.0 133.0 281.0\" fill=\"none\" stroke=\"#C0392B\" stroke-width=\"2\" stroke-linecap=\"round\"/>\n<path d=\"M 89.0 281.0 Q 111.0 292.0 133.0 281.0\" fill=\"none\" stroke=\"#C0392B\" stroke-width=\"2\" stroke-linecap=\"round\"/>\n<g class=\"tag\"><circle cx=\"226.6\" cy=\"258.0\" r=\"9\" fill=\"white\" stroke=\"#C0392B\" stroke-width=\"1.2\"/><text x=\"226.6\" y=\"261.6\" font-family=\"'Nanum Gothic','Apple SD Gothic Neo','Malgun Gothic',sans-serif\" font-size=\"10\" fill=\"#C0392B\" text-anchor=\"middle\" font-weight=\"bold\">5</text></g>\n</g>\n</g></svg>", "data": {"grid": {"ncols": 20, "nrows": 14, "gap_after": 10, "gap": 0.16}, "cells": [{"r": 1, "c": 0, "tok": "어", "src": [0, 1]}, {"r": 1, "c": 1, "tok": "제", "src": [1, 2]}, {"r": 1, "c": 3, "tok": "나", "src": [3, 4]}, {"r": 1, "c": 4, "tok": "는", "src": [4, 5]}, {"r": 1, "c": 6, "tok": "친", "src": [6, 7]}, {"r": 1, "c": 7, "tok": "구", "src": [7, 8]}, {"r": 1, "c": 8, "tok": "와", "src": [8, 9]}, {"r": 1, "c": 9, "tok": "같", "src": [9, 10]}, {"r": 1, "c": 10, "tok": "이", "src": [10, 11]}, {"r": 1, "c": 12, "tok": "놀", "src": [12, 13]}, {"r": 1, "c": 13, "tok": "이", "src": [13, 14]}, {"r": 1, "c": 15, "tok": "터", "src": [15, 16]}, {"r": 1, "c": 16, "tok": "에", "src": [16, 17]}, {"r": 1, "c": 17, "tok": "서", "src": [17, 18]}, {"r": 1, "c": 19, "tok": "놀", "src": [19, 20]}, {"r": 3, "c": 0, "tok": "았", "src": [20, 21]}, {"r": 3, "c": 1, "tok": "다", "src": [21, 22]}, {"r": 3, "c": 2, "tok": ".", "src": [22, 23]}, {"r": 3, "c": 4, "tok": "그", "src": [24, 25]}, {"r": 3, "c": 5, "tok": "런", "src": [25, 26]}, {"r": 3, "c": 6, "tok": "데", "src": [26, 27]}, {"r": 3, "c": 8, "tok": "갑", "src": [28, 29]}, {"r": 3, "c": 9, "tok": "자", "src": [29, 30]}, {"r": 3, "c": 10, "tok": "기", "src": [30, 31]}, {"r": 3, "c": 12, "tok": "비", "src": [32, 33]}, {"r": 3, "c": 14, "tok": "왔", "src": [34, 35]}, {"r": 3, "c": 15, "tok": "다", "src": [35, 36]}, {"r": 3, "c": 17, "tok": "그", "src": [37, 38]}, {"r": 3, "c": 18, "tok": "래", "src": [38, 39]}, {"r": 3, "c": 19, "tok": "서", "src": [39, 40]}, {"r": 5, "c": 0, "tok": "우", "src": [41, 42]}, {"r": 5, "c": 1, "tok": "리", "src": [42, 43]}, {"r": 5, "c": 2, "tok": "는", "src": [43, 44]}, {"r": 5, "c": 4, "tok": "집", "src": [45, 46]}, {"r": 5, "c": 5, "tok": "으", "src": [46, 47]}, {"r": 5, "c": 6, "tok": "로", "src": [47, 48]}, {"r": 5, "c": 8, "tok": "뛰", "src": [49, 50]}, {"r": 5, "c": 9, "tok": "어", "src": [50, 51]}, {"r": 5, "c": 10, "tok": "갔", "src": [51, 52]}, {"r": 5, "c": 11, "tok": "다", "src": [52, 53]}, {"r": 5, "c": 12, "tok": ".", "src": [53, 54]}, {"r": 5, "c": 14, "tok": "아", "src": [55, 56]}, {"r": 5, "c": 15, "tok": "주", "src": [56, 57]}, {"r": 5, "c": 17, "tok": "정", "src": [58, 59]}, {"r": 5, "c": 18, "tok": "말", "src": [59, 60]}, {"r": 7, "c": 0, "tok": "재", "src": [61, 62]}, {"r": 7, "c": 1, "tok": "미", "src": [62, 63]}, {"r": 7, "c": 2, "tok": "있", "src": [63, 64]}, {"r": 7, "c": 3, "tok": "었", "src": [64, 65]}, {"r": 7, "c": 4, "tok": "다", "src": [65, 66]}, {"r": 7, "c": 5, "tok": ".", "src": [66, 67]}], "hangs": {}, "wrap_rows": [3], "corrections": [{"n": 1, "kind": "punct", "label": "부호 넣음표", "reason": "문장이 끝났는데 마침표가 없다", "layer": "표기", "source": "rule", "severity": "높음", "target": "왔다", "nth": 0, "text": ".", "state": "pending", "anchor": {"type": "boundary", "r": 3, "c": 16}}, {"n": 2, "kind": "space", "label": "띄움표", "reason": "'친구와' 뒤를 띄어 써야 한다", "layer": "표기", "source": "rule", "severity": "보통", "target": "친구와", "nth": 0, "text": null, "state": "pending", "anchor": {"type": "boundary", "r": 1, "c": 9}}, {"n": 3, "kind": "indent", "label": "들여쓰기표", "reason": "문단 첫 칸을 비우지 않았다", "layer": "표기", "source": "rule", "severity": "보통", "target": "어제", "nth": 0, "text": null, "state": "pending", "anchor": {"type": "span", "r": 1, "c0": 0, "c1": 1, "gap": null}}, {"n": 4, "kind": "delete", "label": "뺌표", "reason": "'아주'와 '정말'은 뜻이 겹치는 강조어입니다. 두 개를 다 쓰면 중복이 되니 하나만 남기세요.", "layer": "내용", "source": "llm", "severity": "보통", "target": "아주", "nth": 0, "text": null, "state": "pending", "anchor": {"type": "span", "r": 5, "c0": 14, "c1": 15, "gap": null}}, {"n": 5, "kind": "join", "label": "붙임표", "reason": "마지막 문장이 '아주 정말'처럼 감정만 나열되어 있어 다소 상투적입니다. 어떤 점이 재미있었는지 구체적으로 한 문장 덧붙이면 글이 더 생생해집니다.", "layer": "내용", "source": "llm", "severity": "보통", "target": "재미있었다.", "nth": 0, "text": null, "state": "pending", "anchor": {"type": "span", "r": 7, "c0": 0, "c1": 5, "gap": null}}], "review": {"good": "일이 일어난 순서(놀이터에서 놈 → 비가 옴 → 집으로 뛰어감 → 느낌)를 시간 순서대로 잘 정리해서 썼습니다.", "fix": "'비 왔다'처럼 조사가 빠져 문장 호응이 어색한 곳이 있고, '아주 정말'처럼 뜻이 겹치는 말을 함께 써서 표현이 상투적입니다. 마지막 느낌 문장도 구체적인 이유 없이 감탄만 하고 끝나 아쉽습니다.", "next": "다음 글을 쓸 때는 '왜, 어떻게' 재미있었는지 한두 문장 더 써서 느낌을 구체적으로 표현해 보세요. 또 같은 뜻의 낱말을 겹쳐 쓰지 않았는지 소리 내어 읽어보며 확인해 보세요."}, "meta": {"title": null, "figure_title": null, "caption": null, "text": "어제 나는 친구와같이 놀이 터에서 놀았다. 그런데 갑자기 비 왔다 그래서 우리는 집으로 뛰어갔다. 아주 정말 재미있었다.", "rows_used": 9}}, "gate": [{"kind": "punct", "target": "그런데 갑자기 비가 왔다", "text": ".", "reason": "이 문장 뒤에 '그래서'로 이어지는 새 문장이 시작되므로 문장을 끊어 주는 것이 자연스럽습니다.", "layer": "내용", "severity": "낮음", "nth": 0, "source": "llm", "drop_reason": "본문에서 target을 찾지 못했다"}, {"kind": "stet", "target": "그래서 우리는 집으로 뛰어갔다.", "reason": "사건의 흐름(비가 옴 → 집으로 뛰어감)이 자연스럽게 이어져 있어 좋습니다.", "layer": "내용", "severity": "낮음", "nth": 0, "source": "llm", "drop_reason": "stet는 교사가 지면 편집에 쓰는 부호다(LLM 사용 금지)"}, {"kind": "replace", "target": "비 왔다", "text": "비가 왔다", "reason": "'비'는 주어이므로 주격 조사 '가'가 필요합니다. 서술어와 호응이 되도록 '비가 왔다'로 고쳐 보세요.", "layer": "내용", "severity": "보통", "nth": 0, "source": "llm", "drop_reason": "규칙 계층의 'punct' 항목과 자리가 겹친다"}]};</script>
+<script>
+/* 원고지 첨삭기 — 교사 검토 화면.
+   서버가 보낸 SVG(칸 좌표는 파이썬이 계산)를 붙이고, 상태 관리만 담당한다.
+   window.__CHUMSAK__ 가 있으면 그것을 쓰고(정적 데모), 없으면 /api/chumsak 을 부른다. */
+(function () {
+  "use strict";
+  var S = { svg: null, data: null, sel: null, hidden: {} };
+  var $ = function (id) { return document.getElementById(id); };
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+    });
+  }
+
+  /* ---------------------------------------------------------------- 초기화 */
+  function boot(payload) {
+    S.svg = payload.svg;
+    S.data = payload.data;
+    S.gate = payload.gate || [];
+    $("sheetwrap").innerHTML = S.svg;
+    S.data.corrections.forEach(function (c) { if (!c.state) c.state = "pending"; });
+    bindSheet();
+    renderChips();
+    renderItems();
+    renderGate();
+    renderReview();
+    updateState();
+  }
+
+  function bindSheet() {
+    Array.prototype.forEach.call(document.querySelectorAll(".mk"), function (g) {
+      g.addEventListener("click", function () { select(+g.dataset.n, true); });
+    });
+  }
+
+  /* ---------------------------------------------------------------- 목록 */
+  function itemHTML(c) {
+    var src = c.source === "rule" ? "규칙" : "LLM";
+    var tgt = c.target ? '<span class="tgt">' + esc(c.target) + "</span>" : "";
+    var to = c.text ? ' → <span class="tgt">' + esc(c.text) + "</span>" : "";
+    return '<li class="item" data-n="' + c.n + '" data-state="' + c.state + '">' +
+      '<div class="hd"><span class="num">' + c.n + "</span>" +
+      '<span class="kind">' + esc(c.label) + "</span>" +
+      '<span class="badge ' + c.source + '">' + src + "</span>" +
+      '<span class="badge">' + esc(c.layer) + "</span></div>" +
+      '<p class="why">' + tgt + to + " · " + esc(c.reason) + "</p>" +
+      '<div class="acts">' +
+      '<button class="btn sm act" data-a="approved">승인</button>' +
+      '<button class="btn sm act" data-a="edit">수정</button>' +
+      '<button class="btn sm act" data-a="rejected">기각</button></div>' +
+      "</li>";
+  }
+
+  function renderItems() {
+    var box = $("items");
+    box.innerHTML = S.data.corrections.map(itemHTML).join("");
+    $("cnt-items").textContent = S.data.corrections.length;
+    Array.prototype.forEach.call(box.querySelectorAll(".item"), function (li) {
+      var n = +li.dataset.n;
+      li.addEventListener("click", function (e) {
+        if (e.target.classList.contains("act")) return;
+        select(n, false);
+      });
+      Array.prototype.forEach.call(li.querySelectorAll(".act"), function (b) {
+        b.addEventListener("click", function (e) {
+          e.stopPropagation();
+          if (b.dataset.a === "edit") openEdit(li, n);
+          else setState(n, b.dataset.a);
+        });
+      });
+    });
+    paintButtons();
+  }
+
+  function paintButtons() {
+    Array.prototype.forEach.call($("items").querySelectorAll(".item"), function (li) {
+      var c = find(+li.dataset.n);
+      li.dataset.state = c.state;
+      Array.prototype.forEach.call(li.querySelectorAll(".act"), function (b) {
+        b.classList.remove("on-ok", "on-no");
+        if (b.dataset.a === "approved" && c.state === "approved") b.classList.add("on-ok");
+        if (b.dataset.a === "rejected" && c.state === "rejected") b.classList.add("on-no");
+      });
+    });
+  }
+
+  function openEdit(li, n) {
+    if (li.querySelector(".edit")) return;
+    var c = find(n);
+    var ta = document.createElement("textarea");
+    ta.className = "edit";
+    ta.rows = 3;
+    ta.value = c.reason;
+    ta.addEventListener("click", function (e) { e.stopPropagation(); });
+    ta.addEventListener("change", function () {
+      c.reason = ta.value;
+      c.state = "edited";
+      c.source = c.source;
+      renderItems();
+      select(n, false);
+      updateState();
+    });
+    li.appendChild(ta);
+    ta.focus();
+  }
+
+  function find(n) {
+    return S.data.corrections.filter(function (c) { return c.n === n; })[0];
+  }
+
+  /* ---------------------------------------------------------------- 상태 */
+  function setState(n, st) {
+    var c = find(n);
+    c.state = c.state === st ? "pending" : st;
+    var g = document.querySelector('.mk[data-n="' + n + '"]');
+    if (g) g.dataset.state = c.state;
+    paintButtons();
+    applyVisibility();
+    updateState();
+  }
+
+  function select(n, fromSheet) {
+    S.sel = n;
+    Array.prototype.forEach.call(document.querySelectorAll(".mk"), function (g) {
+      g.classList.toggle("sel", +g.dataset.n === n);
+    });
+    Array.prototype.forEach.call($("items").querySelectorAll(".item"), function (li) {
+      var on = +li.dataset.n === n;
+      li.classList.toggle("sel", on);
+      if (on && fromSheet) li.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    });
+    if (fromSheet) showTab("items");
+  }
+
+  function updateState() {
+    var cs = S.data.corrections;
+    var pend = cs.filter(function (c) { return c.state === "pending"; }).length;
+    var el = $("stateline");
+    if (pend === 0 && cs.length) {
+      el.textContent = "검토 완료 · " + cs.length + "건";
+      el.classList.add("done");
+    } else {
+      el.textContent = "검토 대기 · 남은 " + pend + "건";
+      el.classList.remove("done");
+    }
+    $("return").disabled = pend !== 0;
+  }
+
+  /* ---------------------------------------------------------------- 필터 */
+  function renderChips() {
+    var by = {};
+    S.data.corrections.forEach(function (c) {
+      by[c.kind] = by[c.kind] || { label: c.label, n: 0 };
+      by[c.kind].n++;
+    });
+    $("kindchips").innerHTML = Object.keys(by).map(function (k) {
+      return '<button class="chip" data-kind="' + k + '">' + esc(by[k].label) +
+        '<span class="n">' + by[k].n + "</span></button>";
+    }).join("");
+    Array.prototype.forEach.call($("kindchips").children, function (b) {
+      b.addEventListener("click", function () {
+        var k = b.dataset.kind;
+        S.hidden[k] = !S.hidden[k];
+        b.classList.toggle("off", !!S.hidden[k]);
+        applyVisibility();
+      });
+    });
+  }
+
+  function applyVisibility() {
+    var hidePending = $("hidepending").checked;
+    Array.prototype.forEach.call(document.querySelectorAll(".mk"), function (g) {
+      var c = find(+g.dataset.n);
+      var off = S.hidden[c.kind] || (hidePending && c.state === "pending");
+      g.classList.toggle("hidden", !!off);
+    });
+  }
+
+  /* ---------------------------------------------------------------- 총평·게이트 */
+  function renderReview() {
+    var r = S.data.review || {};
+    $("rv-good").value = r.good || "";
+    $("rv-fix").value = r.fix || "";
+    $("rv-next").value = r.next || "";
+    ["good", "fix", "next"].forEach(function (k) {
+      $("rv-" + k).addEventListener("change", function () {
+        S.data.review[k] = $("rv-" + k).value;
+      });
+    });
+  }
+
+  function renderGate() {
+    $("cnt-gate").textContent = S.gate.length;
+    $("gateitems").innerHTML = S.gate.map(function (c, i) {
+      return '<li class="item"><div class="hd"><span class="num">–</span>' +
+        '<span class="kind">' + esc(c.kind) + "</span>" +
+        '<span class="badge llm">LLM</span></div>' +
+        '<p class="why"><span class="tgt">' + esc(c.target || "") + "</span> · " +
+        esc(c.reason || "") + "</p>" +
+        '<p class="why"><b>반려</b> — ' + esc(c.drop_reason || "") + "</p></li>";
+    }).join("") || '<p class="note">반려된 항목이 없습니다.</p>';
+  }
+
+  function showTab(name) {
+    Array.prototype.forEach.call(document.querySelectorAll(".tab"), function (t) {
+      t.classList.toggle("on", t.dataset.tab === name);
+    });
+    Array.prototype.forEach.call(document.querySelectorAll(".tabpane"), function (p) {
+      p.classList.toggle("on", p.id === "pane-" + name);
+    });
+  }
+
+  /* ---------------------------------------------------------------- 내보내기 */
+  function payloadOut(fmt) {
+    return {
+      text: S.data.meta.text,
+      corrections: S.data.corrections.map(function (c) {
+        return { kind: c.kind, target: c.target, nth: c.nth, text: c.text,
+                 reason: c.reason, layer: c.layer, source: c.source, state: c.state };
+      }),
+      review: S.data.review,
+      format: fmt
+    };
+  }
+
+  function exportSheet(fmt) {
+    if (window.__CHUMSAK__) {
+      $("msg").textContent = "정적 데모에서는 내보내기가 동작하지 않습니다. server.py를 실행하세요.";
+      return;
+    }
+    $("msg").textContent = "만드는 중…";
+    fetch("/api/export", { method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payloadOut(fmt)) })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        $("msg").innerHTML = j.error ? esc(j.error)
+          : '완료 — <a href="' + esc(j.url) + '" target="_blank">' + esc(j.url) + "</a>" +
+            "  (승인 " + j.approved + "건 · 되살림표 " + j.stet + "건)";
+      })
+      .catch(function (e) { $("msg").textContent = "실패: " + e; });
+  }
+
+  /* ---------------------------------------------------------------- 바인딩 */
+  document.addEventListener("DOMContentLoaded", function () {
+    Array.prototype.forEach.call(document.querySelectorAll(".tab"), function (t) {
+      t.addEventListener("click", function () { showTab(t.dataset.tab); });
+    });
+    $("hidepending").addEventListener("change", applyVisibility);
+    $("approve-all").addEventListener("click", function () {
+      S.data.corrections.forEach(function (c) {
+        if (c.source === "rule" && c.state === "pending") c.state = "approved";
+      });
+      S.data.corrections.forEach(function (c) {
+        var g = document.querySelector('.mk[data-n="' + c.n + '"]');
+        if (g) g.dataset.state = c.state;
+      });
+      paintButtons(); applyVisibility(); updateState();
+    });
+    $("reset-all").addEventListener("click", function () {
+      S.data.corrections.forEach(function (c) { c.state = "pending"; });
+      S.data.corrections.forEach(function (c) {
+        var g = document.querySelector('.mk[data-n="' + c.n + '"]');
+        if (g) g.dataset.state = "pending";
+      });
+      paintButtons(); applyVisibility(); updateState();
+    });
+    $("export-png").addEventListener("click", function () { exportSheet("png"); });
+    $("return").addEventListener("click", function () { exportSheet("pdf"); });
+
+    if (window.__CHUMSAK__) { boot(window.__CHUMSAK__); return; }
+    fetch("/api/session").then(function (r) { return r.json(); }).then(boot)
+      .catch(function (e) {
+        $("sheetwrap").innerHTML = '<p class="note" style="padding:20px">불러오지 못했습니다: ' +
+          esc(e) + "</p>";
+      });
+  });
+})();
+
+</script>
+</body>
+</html>
