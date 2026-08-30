@@ -91,12 +91,18 @@ res = CA.chumsak(text, host, Kiwi(), out="첨삭본.png", grade="초등 6학년"
 print(res["counts"], res["dropped"])
 ```
 
-원고지 렌더러만 쓰려면 JSON 명세를 넘긴다.
+원고지 렌더러만 쓰려면 JSON 명세를 넘긴다. `examples/spec_예시.json`이 그대로 도는 예시다.
 
 ```bash
-python wongoji_render.py spec.json     # PNG/PDF
-python wongoji_svg.py spec.json        # SVG (부호마다 data-n, 브라우저 상호작용용)
+python wongoji_render.py examples/spec_예시.json   # PNG/PDF (spec["out"] 경로로 저장)
+python wongoji_svg.py    examples/spec_예시.json   # SVG (부호마다 data-n, 브라우저 상호작용용)
 ```
+
+명세의 핵심은 `corrections` 항목의 기준점 두 갈래다.
+`space`·`insert`·`punct`·`newline`·`joinline`은 **target 바로 뒤 경계**에 부호를 놓고,
+나머지 아홉(`join`·`delete`·`replace`·`swap`·`indent`·`outdent`·`up`·`down`·`stet`)은
+**target 범위 전체**를 덮는다. `insert`·`punct`·`replace`는 `text`가 필수다.
+`corrections`와 `review`를 비우면 서식 예시·연습지가 된다.
 
 ## 파일
 

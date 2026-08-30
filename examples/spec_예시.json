@@ -1,0 +1,48 @@
+{
+  "text": "어제 나는 친구와같이 놀이 터에서 놀았다. 그런데 갑자기 비 왔다 그래서 우리는 집으로 뛰어갔다. 아주 정말 재미있었다.",
+  "indent": 0,
+  "ncols": 20,
+  "nrows": 14,
+  "double_space": true,
+  "figure_title": "첨삭본 예시",
+  "caption": "boundary 계열은 target 바로 뒤 경계에, span 계열은 target 범위에 부호를 놓는다.",
+  "corrections": [
+    {
+      "kind": "indent",
+      "target": "어제",
+      "reason": "문단 첫 칸을 비우지 않았다"
+    },
+    {
+      "kind": "space",
+      "target": "친구와",
+      "reason": "'친구와'와 '같이'를 붙여 썼다"
+    },
+    {
+      "kind": "join",
+      "target": "놀이 터",
+      "reason": "'놀이터'를 잘못 띄어 썼다"
+    },
+    {
+      "kind": "punct",
+      "target": "왔다",
+      "text": ".",
+      "reason": "문장이 끝났는데 마침표가 없다"
+    },
+    {
+      "kind": "newline",
+      "target": "그래서",
+      "reason": "장면이 바뀌므로 문단을 나눈다"
+    },
+    {
+      "kind": "delete",
+      "target": "아주",
+      "reason": "'아주'와 '정말'은 뜻이 겹친다"
+    }
+  ],
+  "review": {
+    "good": "겪은 일을 시간 순서대로 또렷하게 썼다.",
+    "fix": "띄어쓰기와 마침표를 빠뜨린 곳이 있다.",
+    "next": "비가 쏟아졌을 때 마음이 어땠는지 한 문장만 덧붙여 보자."
+  },
+  "out": "첨삭본.png"
+}
