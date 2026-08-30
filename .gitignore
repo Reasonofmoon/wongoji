@@ -2,6 +2,13 @@ __pycache__/
 *.pyc
 out/
 .venv/
+.env
+data/sessions/*.json
+data/settings.json
 _*.json
-_*.md
 uvicorn.log
+.pytest_cache/
+.playwright-mcp/
+.vercel
+compose-*.png
+review-*.png
