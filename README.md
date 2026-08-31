@@ -80,7 +80,7 @@ python -m uvicorn server:app --port 8000     # http://127.0.0.1:8000
 LLM 계층 없이도 돌아간다(규칙 계층만, 총평은 비어 있음). `CHUMSAK_NO_LLM=1`로 강제할 수 있다.
 웹 화면의 **API 키**에서 제공자(xAI / Gemini / Anthropic / OpenAI)와 키를 저장한다.
 키가 없으면 이 컴퓨터의 Grok CLI 로그인(`~/.grok/auth.json`)을 xAI 호스트로 쓴다.
-직접 주입하려면 `server.HOST`에 아래 인터페이스를 만족하는 객체를 넣는다.
+직접 주입하려면 `server_pipeline.HOST`에 아래 인터페이스를 만족하는 객체를 넣는다.
 
 ```python
 host.llm({"messages": [...], "system": str, "tools": [schema],

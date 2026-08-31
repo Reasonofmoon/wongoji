@@ -5,7 +5,27 @@ description: "원고지 첨삭 엔진과 FastAPI를 구현·수정한다. 규칙
 
 # 첨삭 엔진
 
-칸 좌표의 단일 출처는 `wongoji_render.py`다. `wongoji_svg.py`는 `export_layout()`을 소비하고 부호 모양만 그린다. 서버는 게이트를 다시 조립하지 않는다.
+**칸 좌표의 단일 출처는 `wongoji_render.export_layout()`이다.** `wongoji_svg.py`는 그
+결과를 소비하고 부호 모양만 그린다. 서버는 게이트를 다시 조립하지 않는다.
+
+## 모듈 지도
+
+| 모듈 | 맡은 일 | 만질 일이 있을 때 |
+|------|---------|------------------|
+| `wongoji_style` | 색·글꼴·부호 이름 | 부호를 추가할 때 `KIND_LABEL`부터 |
+| `wongoji_text` | 원문 → 칸 배치. **그림을 그리지 않는다** | 줄바꿈·부호 매달기 규칙 |
+| `wongoji_grid` | 칸 좌표와 장 나눔 | 지면이 남거나 모자랄 때 |
+| `wongoji_marks` | 교정부호 작도 | 부호 모양이 어색할 때 |
+| `wongoji_panel` | 범례와 총평 | 글자가 겹치거나 잘릴 때 |
+| `wongoji_render` | 조립 + 호환용 재수출 | 페이지 구성, `export_layout` 계약 |
+| `chumsak_app` | 규칙·LLM·게이트·초점 필터 | 무엇을 잡을지 |
+| `server_config` | 경로·상한·환경 | Vercel 분기 |
+| `server_store` | 세션·인식 결과 디스크 저장 | 보관 정책 |
+| `server_pipeline` | 원문 → 첨삭 → SVG. 주입 지점은 `server_pipeline.HOST` | 서버가 엔진을 부르는 방식 |
+| `server_ocr` | 사진 입력 라우터 | 업로드·확인 게이트 |
+| `server` | 앱 조립과 나머지 라우트 | **정적 마운트는 항상 맨 아래** |
+
+`wongoji_render`는 옛 이름을 그대로 재수출한다. 새 코드는 각 모듈에서 직접 가져다 쓴다.
 
 도메인 판단은 `wongoji-domain`을 읽는다. API 필드 세부는 `references/api-contract.md`를 읽는다.
 
@@ -22,7 +42,7 @@ merged, clashed = drop_overlaps(merged)
 drawn, held = focus_filter(merged, focus, max_items)
 ```
 
-`server.run_pipeline`과 `chumsak()`는 이 함수를 호출한다. host가 None이면 LLM을 건너뛴다. `chumsak()`가 host를 필수값으로 두면 라이브러리 경로가 서버와 어긋난다.
+`server_pipeline.run_pipeline`과 `chumsak()`는 이 함수를 호출한다. host가 None이면 LLM을 건너뛴다. `chumsak()`가 host를 필수값으로 두면 라이브러리 경로가 서버와 어긋난다.
 
 렌더 분기:
 - 웹 검토: `wongoji_svg.build(spec)` → SVG + data
