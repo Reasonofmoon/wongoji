@@ -154,8 +154,10 @@ def api_export(body: ExportIn):
 
 @app.get("/api/health")
 def api_health():
+    import wongoji_style as WSt
     st = LH.status()
-    st.update({"ok": True, "sessions": session_count(), "persist": True})
+    st.update({"ok": True, "sessions": session_count(), "persist": True,
+               "font": WSt.font_report()})
     return st
 
 
