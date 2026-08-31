@@ -45,11 +45,29 @@ def test_byok_catalog_has_current_flagships():
     assert LM.default_model("xai") == "grok-4.6"
 
 
+def _server_side_source():
+    """서버 쪽 모듈을 한 덩어리로 읽는다. 파일이 갈라져도 계약은 그대로다."""
+    import glob
+    out = []
+    for path in sorted(glob.glob(os.path.join(ROOT, "server*.py"))):
+        out.append(open(path, encoding="utf-8").read())
+    return "\n".join(out)
+
+
 def test_server_uses_assemble():
-    src = open(os.path.join(ROOT, "server.py"), encoding="utf-8").read()
+    """서버가 게이트를 다시 조립하지 않는다. chumsak_app이 유일한 조립기다."""
+    src = _server_side_source()
     assert "CA.assemble" in src
     assert "CA.layout_indent" in src
     assert re.search(r"sents\[:-1\]", src) is None
+
+
+def test_static_mount_stays_last():
+    """'/'에 StaticFiles를 먼저 걸면 그 아래 API 경로가 가려진다."""
+    src = open(os.path.join(ROOT, "server.py"), encoding="utf-8").read()
+    mount = src.index('app.mount("/"')
+    for path in ("/api/chumsak", "/api/export", "/api/health"):
+        assert src.index(path) < mount, "%s가 정적 마운트 뒤에 있다" % path
 
 
 def test_static_assets_are_cache_busted():

@@ -7,8 +7,8 @@
     host.reasoning_model() -> str
 
 사용:
-    import server, llm_anthropic
-    server.HOST = llm_anthropic.Host()      # ANTHROPIC_API_KEY 환경변수 필요
+    import server_pipeline, llm_anthropic
+    server_pipeline.HOST = llm_anthropic.Host()   # ANTHROPIC_API_KEY 환경변수 필요
 """
 import os
 
