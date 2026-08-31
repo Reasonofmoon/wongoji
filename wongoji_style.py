@@ -3,6 +3,7 @@
 
 부호 종류(kind)와 한글 이름은 렌더러·SVG·게이트가 모두 참조하므로 여기가 단일 출처다.
 """
+import os
 
 # 서버(리눅스)에는 한글 글꼴이 없다. DejaVu로 떨어지면 모든 한글이 두부 상자로 나온다.
 # koreanize-matplotlib(MIT)이 나눔고딕을 담아 배포하므로 그것을 등록해 쓴다.
@@ -26,6 +27,35 @@ KIND_LABEL = {
 }
 
 
+def _bundled_dir():
+    """글꼴이 담긴 디렉터리를 찾는다. **패키지를 import하지 않는다.**
+
+    koreanize_matplotlib은 모듈 본문에서 distutils를 부르는데 파이썬 3.12에서 그것이
+    빠졌다. 우리는 그 패키지의 동작이 아니라 담긴 .ttf 파일만 필요하므로, 본문을
+    실행하지 않고 경로만 찾는다. 로컬에서는 setuptools의 distutils 대체물 덕에 import가
+    통과해 이 함수가 없을 때도 돌았고, 서버에서만 조용히 실패했다.
+    """
+    global LAST_ERROR
+    import importlib.util
+    try:
+        spec = importlib.util.find_spec("koreanize_matplotlib")
+    except Exception as exc:
+        LAST_ERROR = "find_spec 실패: %r" % (exc,)
+        return None
+    if spec is None:
+        LAST_ERROR = "koreanize-matplotlib이 설치되지 않았다"
+        return None
+    roots = list(spec.submodule_search_locations or [])
+    if not roots and spec.origin:
+        roots = [os.path.dirname(spec.origin)]
+    for root in roots:
+        d = os.path.join(root, "fonts")
+        if os.path.isdir(d):
+            return d
+    LAST_ERROR = "글꼴 디렉터리를 찾지 못했다: %s" % roots
+    return None
+
+
 def register_bundled():
     """묶어 온 한글 글꼴을 matplotlib에 등록한다. 반환: 등록된 이름들.
 
@@ -35,14 +65,12 @@ def register_bundled():
     import os
     global LAST_ERROR
     try:
-        import koreanize_matplotlib as km
         import matplotlib.font_manager as fm
     except Exception as exc:
-        LAST_ERROR = "import 실패: %r" % (exc,)
+        LAST_ERROR = "matplotlib 없음: %r" % (exc,)
         return []
-    d = os.path.join(os.path.dirname(km.__file__), "fonts")
-    if not os.path.isdir(d):
-        LAST_ERROR = "글꼴 디렉터리가 없다: %s" % d
+    d = _bundled_dir()
+    if not d:
         return []
     names = []
     for name in sorted(os.listdir(d)):
