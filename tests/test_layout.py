@@ -91,3 +91,30 @@ def test_panel_height_grows_with_content():
     assert long_ > short
     # 줄 하나가 늘 때마다 최소 한 줄 높이만큼은 늘어난다
     assert long_ - short >= WR.PANEL_LINE * 14
+
+
+def test_title_cells_carry_no_source_offset():
+    """제목은 본문 오프셋과 겹치면 안 된다.
+
+    예전에는 base=-1을 썼는데 그건 첫 글자에만 걸리고 둘째 글자부터 0,1,2…가 되어
+    본문과 같은 오프셋을 들었다. locate_span이 모든 행을 훑으므로 본문 첫머리에
+    붙는 부호가 제목 칸까지 잡는다.
+    """
+    from wongoji_text import build_blocks, layout, locate_span
+    spec = {"title": "학교를 꼭 다녀야 하는가", "text": "동생가 밥를 먹었다", "indent": 0}
+    lay = layout(build_blocks(spec), ncols=20)
+    title_row = next(r for r, row in enumerate(lay["rows"])
+                     if "학" in row)
+    assert all(sp is None for sp in lay["src"][title_row])
+
+    # 본문 첫 세 글자를 겨눈 부호가 제목 행을 건드리지 않는다
+    hits = locate_span(lay, 0, 3)
+    assert hits and all(r != title_row for r, _c in hits)
+
+
+def test_meta_cells_carry_no_source_offset():
+    from wongoji_text import build_blocks, layout
+    lay = layout(build_blocks({"meta": ["3학년 2반 김민준"], "text": "동생가 밥를"}),
+                 ncols=20)
+    meta_row = next(r for r, row in enumerate(lay["rows"]) if "학" in row and "년" in row)
+    assert all(sp is None for sp in lay["src"][meta_row])

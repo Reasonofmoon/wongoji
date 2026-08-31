@@ -31,19 +31,27 @@ def tokenize(text, base=0):
 
 
 def layout(blocks, ncols=20):
-    """blocks: [None | (text, indent, align, base)] -> rows/src/hangs/wrap."""
+    """blocks: [None | (text, indent, align, base)] -> rows/src/hangs/wrap.
+
+    **base가 None이면 출처 없는 블록이다.** 제목·소속이 그렇다. src를 None으로 두어야
+    locate_span이 그 칸을 못 본다. 예전에는 -1을 썼는데 그건 첫 글자에만 걸리고
+    둘째 글자부터 0, 1, 2…가 되어 본문 오프셋과 그대로 충돌했다. 본문 첫머리에 붙는
+    부호가 제목 칸까지 잡는다.
+    """
     rows, src, hangs, wrap = [], [], {}, []
     for b in blocks:
         if b is None:
             rows.append([]); src.append([])
             continue
         text, indent, align, base = b
-        toks = tokenize(text, base)
+        anchored = base is not None
+        toks = tokenize(text, base if anchored else 0)
         if align in ("right", "center"):
             pad = (ncols - indent - len(toks)) if align == "right" \
                 else max(0, (ncols - len(toks)) // 2)
             rows.append([" "] * pad + [t[0] for t in toks])
-            src.append([None] * pad + [(t[1], t[2]) for t in toks])
+            src.append([None] * pad
+                       + [((t[1], t[2]) if anchored else None) for t in toks])
             continue
         row, rsrc = [" "] * indent, [None] * indent
         j = 0
@@ -60,7 +68,8 @@ def layout(blocks, ncols=20):
                 rows.append(row); src.append(rsrc)
                 row, rsrc = [], []
                 continue
-            row.append(toks[j][0]); rsrc.append((toks[j][1], toks[j][2]))
+            row.append(toks[j][0])
+            rsrc.append((toks[j][1], toks[j][2]) if anchored else None)
             j += 1
         rows.append(row); src.append(rsrc)
     return {"rows": rows, "src": src, "hangs": hangs, "wrap": wrap, "ncols": ncols}
@@ -70,9 +79,9 @@ def build_blocks(spec):
     """제목·소속·본문을 blocks로. 본문 원문 오프셋(base)을 함께 실어 보낸다."""
     blocks, body_start = [], 0
     if spec.get("title"):
-        blocks += [None, (spec["title"], 0, "center", -1), None]
+        blocks += [None, (spec["title"], 0, "center", None), None]
     for m in spec.get("meta", []):
-        blocks.append((m, 2, "right", -1))
+        blocks.append((m, 2, "right", None))
     if spec.get("title") or spec.get("meta"):
         blocks.append(None)
     text = spec.get("text", "")
