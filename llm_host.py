@@ -112,7 +112,14 @@ def make_host(provider=None, api_key=None, model=None):
 
 
 def iter_hosts():
-    """Primary provider first, then any other provider that still has a key."""
+    """Primary provider first, then any other provider that still has a key.
+
+    CHUMSAK_NO_LLM이 서면 아무것도 내지 않는다. get_host()만 이 변수를 보고 있어서
+    run_pipeline과 OCR 라우터가 규칙만 돌라는 지시를 무시하고 유료 호출을 내보냈다.
+    끄는 스위치는 한 곳에서 걸려야 한다.
+    """
+    if os.environ.get("CHUMSAK_NO_LLM"):
+        return
     settings = load_settings()
     primary = detect_provider(settings)
     order = []
