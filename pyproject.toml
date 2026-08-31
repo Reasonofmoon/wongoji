@@ -8,6 +8,7 @@ dependencies = [
     "fastapi>=0.110",
     "uvicorn>=0.29",
     "python-multipart>=0.0.9",
+    "koreanize-matplotlib>=0.1.1",   # 나눔고딕 동봉(MIT). 서버에 한글 글꼴이 없다
 ]
 
 [tool.vercel]

@@ -3,4 +3,5 @@ kiwipiepy>=0.20
 fastapi>=0.110
 uvicorn>=0.29
 python-multipart>=0.0.9
+koreanize-matplotlib>=0.1.1
 pytest>=8.0

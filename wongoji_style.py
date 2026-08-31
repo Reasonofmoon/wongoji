@@ -4,9 +4,12 @@
 부호 종류(kind)와 한글 이름은 렌더러·SVG·게이트가 모두 참조하므로 여기가 단일 출처다.
 """
 
-BODY_FONTS = ["NanumMyeongjo", "AppleMyungjo", "NanumGothic", "Apple SD Gothic Neo",
+# 서버(리눅스)에는 한글 글꼴이 없다. DejaVu로 떨어지면 모든 한글이 두부 상자로 나온다.
+# koreanize-matplotlib(MIT)이 나눔고딕을 담아 배포하므로 그것을 등록해 쓴다.
+BUNDLED = "NanumGothic"
+BODY_FONTS = [BUNDLED, "AppleMyungjo", "NanumMyeongjo", "Apple SD Gothic Neo",
               "Malgun Gothic", "Noto Sans CJK KR", "DejaVu Sans"]
-UI_FONTS = ["NanumGothic", "Apple SD Gothic Neo", "AppleGothic", "Malgun Gothic",
+UI_FONTS = [BUNDLED, "Apple SD Gothic Neo", "AppleGothic", "Malgun Gothic",
             "Noto Sans CJK KR", "DejaVu Sans"]
 RED = "#C0392B"
 BLUE = "#1F4E79"
@@ -22,8 +25,38 @@ KIND_LABEL = {
 }
 
 
+def register_bundled():
+    """묶어 온 한글 글꼴을 matplotlib에 등록한다. 반환: 등록된 이름들.
+
+    서버에 한글 글꼴이 없으면 조용히 DejaVu로 떨어지고 글자가 전부 두부 상자로 나온다.
+    실패해도 예외를 올리지 않는다 — 글꼴이 없다고 첨삭을 못 하게 만들 이유는 없다.
+    """
+    import os
+    try:
+        import koreanize_matplotlib as km
+        import matplotlib.font_manager as fm
+    except Exception:
+        return []
+    d = os.path.join(os.path.dirname(km.__file__), "fonts")
+    if not os.path.isdir(d):
+        return []
+    names = []
+    for name in sorted(os.listdir(d)):
+        if not name.lower().endswith((".ttf", ".otf")):
+            continue
+        path = os.path.join(d, name)
+        try:
+            fm.fontManager.addfont(path)
+            names.append(fm.FontProperties(fname=path).get_name())
+        except Exception:
+            continue
+    return names
+
+
 def pick_fonts():
+    """본문·UI 글꼴을 고른다. 어디서 돌든 같은 글꼴이 나오게 묶어 온 것을 먼저 본다."""
     import matplotlib.font_manager as fm
+    register_bundled()
     have = {f.name for f in fm.fontManager.ttflist}
     body = next((f for f in BODY_FONTS if f in have), "DejaVu Sans")
     ui = next((f for f in UI_FONTS if f in have), "DejaVu Sans")
