@@ -68,3 +68,17 @@ def test_static_assets_are_cache_busted():
         assert m.group(1) == want, (
             "%s가 바뀌었는데 index.html의 버전이 옛것이다 (%s != %s). "
             "references/정적자산_캐시.md 참조" % (name, m.group(1), want))
+
+
+def test_upload_dependency_is_declared():
+    """UploadFile을 쓰면 python-multipart가 없을 때 **앱 전체가** import에서 죽는다.
+
+    라우트 정의 시점에 RuntimeError가 나므로 OCR만 실패하는 것이 아니라 배포가 통째로
+    내려간다. 로컬에만 깔려 있어 보이지 않았다.
+    """
+    server_py = open(os.path.join(ROOT, "server.py"), encoding="utf-8").read()
+    if "UploadFile" not in server_py:
+        return
+    for name in ("requirements.txt", "pyproject.toml"):
+        text = open(os.path.join(ROOT, name), encoding="utf-8").read()
+        assert "python-multipart" in text, "%s에 python-multipart가 없다" % name
