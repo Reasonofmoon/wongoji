@@ -26,6 +26,11 @@ class FakeKiwi:
     def space(self, text):
         return self._spaced if self._spaced is not None else text
 
+    def tokenize(self, text):
+        """결정적 규칙은 품사가 필요하다. 스텁은 아무 형태소도 내지 않는다 —
+        그래서 이 픽스처로는 kiwi.space() 경로만 시험한다."""
+        return []
+
 
 def _item(kind, target, nth=0, text=None, reason="이유", source="llm",
           span=None, **kw):
@@ -144,10 +149,64 @@ def test_focus_filter_keeps_kind_diversity():
     assert sum(1 for c in drawn if c["kind"] == "space") < 6
 
 
-def test_rule_layer_caps_space_marks():
+def test_kiwi_only_spacing_never_reaches_the_sheet():
+    """예전에는 상한 4개까지 그렸다. 상한은 홍수를 가릴 뿐 오탐을 없애지 못하고,
+    문서 순서로 잘라 뒤쪽의 맞는 지적을 버리고 앞쪽 오탐을 남겼다."""
     text = "가나다라마바사아자차카타"
     kiwi = FakeKiwi([Sent(0, len(text))],
                     spaced="가 나 다 라 마 바 사 아 자 차 카 타")
     items = CA.rule_layer(text, kiwi)
-    n_space = sum(1 for c in items if c["kind"] == "space")
-    assert n_space <= CA.MAX_RULE_SPACE
+    assert [c for c in items if c["kind"] == "space"]          # 제안은 생긴다
+    drawn, held, _dropped = CA.assemble(text, items, [])
+    assert not [c for c in drawn if c["kind"] == "space"]      # 그리지는 않는다
+    assert [c for c in held if c["kind"] == "space"]           # 버리지도 않는다
+
+
+# ---------------------------------------------------------------- 띄어쓰기 확신도
+def _kiwi():
+    from kiwipiepy import Kiwi
+    if not hasattr(_kiwi, "_k"):
+        _kiwi._k = Kiwi()
+    return _kiwi._k
+
+
+def test_dependent_noun_spacing_is_deterministic():
+    """관형형 어미 뒤 의존명사는 품사로 판정된다. 철자 오류에 흔들리지 않는다."""
+    import chumsak_app as CA
+    k = _kiwi()
+    hits = CA.rule_dependent_noun("먹을것이 많고 할수있다", k)
+    assert {c["target"] for c in hits} == {"먹을", "할"}
+    assert CA.rule_dependent_noun("먹을 것이 많고 할 수 있다", k) == []
+
+
+def test_particle_boundary_spacing_is_deterministic():
+    import chumsak_app as CA
+    k = _kiwi()
+    assert [c["target"] for c in CA.rule_particle_boundary("오늘의일기", k)] == ["오늘의"]
+    # 조사 연쇄와 합성어는 걸리지 않는다
+    assert CA.rule_particle_boundary("학교에서는 놀이동산에 갔다", k) == []
+
+
+def test_typo_does_not_produce_a_spacing_mark_on_the_sheet():
+    """실측 회귀. `채고로`·`떡복기`·`놀이동산`에서 띄움표가 나오면 안 된다.
+
+    철자가 틀린 자리에서 형태소 분석이 무너져 kiwi.space()가 헛짚는다. 그 제안은
+    held로 가고 지면에 그리지 않는다 — 오류유형 카탈로그 오탐 억제 원칙 5.
+    """
+    import chumsak_app as CA
+    k = _kiwi()
+    text = ("그치만 채고로 재미있엇다. 점심에는 맛잇는 떡복기랑 핫도그를 먹엇는대 "
+            "꿀맛이엿다. 놀이동산은 좋았다.")
+    drawn, held, _dropped = CA.assemble(text, CA.rule_layer(text, k), [])
+    bad = {"채", "맛", "떡", "꿀맛이", "놀이"}
+    assert not [c for c in drawn if c["kind"] == "space" and c["target"] in bad]
+    assert [c for c in held if c["kind"] == "space"]      # 버리지는 않는다
+
+
+def test_certain_spacing_still_reaches_the_sheet():
+    """확신도 필터가 결정적 규칙까지 내리면 재현율이 죽는다."""
+    import chumsak_app as CA
+    k = _kiwi()
+    text = "사람이 모를정도로 많았다."
+    drawn, _held, _d = CA.assemble(text, CA.rule_layer(text, k), [])
+    assert any(c["kind"] == "space" and c["target"] == "모를" for c in drawn)

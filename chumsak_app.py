@@ -85,7 +85,6 @@ LLM_ALLOWED = (
     "newline", "joinline", "indent", "outdent", "up", "down",
 )
 KIND_DRAW_ORDER = LLM_ALLOWED
-MAX_RULE_SPACE = 4
 MAX_SHEET_ITEMS = 16
 
 
@@ -110,9 +109,10 @@ def word_at(text, pos):
 
 
 def make(kind, text_all, target, pos, replacement=None, reason="", layer="표기",
-         severity="보통", source="rule"):
+         severity="보통", source="rule", confidence="certain"):
     item = {"kind": kind, "target": target, "nth": nth_of(text_all, target, pos),
-            "reason": reason, "layer": layer, "severity": severity, "source": source}
+            "reason": reason, "layer": layer, "severity": severity, "source": source,
+            "confidence": confidence}
     if replacement:
         item["text"] = replacement
     return item
@@ -128,7 +128,7 @@ def rule_spacing(text, kiwi):
         if tag == "insert" and fixed[j1:j2] == " ":
             s, e = word_at(text, i1)
             if e > s:
-                out.append(make("space", text, text[s:e], e,
+                out.append(make("space", text, text[s:e], e, confidence="uncertain",
                                 reason="'%s' 뒤를 띄어 써야 한다" % text[s:e]))
         elif tag == "delete" and text[i1:i2] == " ":
             s = text.rfind(" ", 0, i1) + 1
@@ -136,8 +136,72 @@ def rule_spacing(text, kiwi):
             e = len(text) if e < 0 else e
             span = text[s:e]
             if " " in span:
-                out.append(make("join", text, span, e,
+                out.append(make("join", text, span, e, confidence="uncertain",
                                 reason="'%s'는 붙여 써야 한다" % span.replace(" ", "")))
+    return out
+
+
+# 관형형 어미 뒤에 오면 띄어 써야 하는 말. NNB이거나, NNB로 안 잡히지만 의존적으로
+# 쓰이는 NNG(정도·때·중·김·통)를 함께 본다.
+DEP_NOUNS = frozenset(
+    "것 거 걸 게 데 듯 수 시 때 터 뿐 만큼 지 줄 바 척 양 법 리 채 참 김 중 통 정도 나위"
+    .split())
+
+
+def rule_dependent_noun(text, kiwi):
+    """관형형 어미(ETM) 바로 뒤의 의존명사를 붙여 썼으면 띄움표.
+
+    **결정적 규칙이다.** `kiwi.space()`와 달리 근거가 품사에 있다. 실측 근거 문서의
+    우선순위 1번이고, WS 오류의 가장 큰 덩이를 단일 규칙으로 덮는다.
+
+    이것이 필요한 이유는 재현율만이 아니다. `kiwi.space()` 단독 제안은 철자가 틀린
+    자리에서 형태소 분석이 무너지며 헛짚는다 — `채고로`(최고로) 뒤, `떡복기`(떡볶이)
+    뒤, `놀이동산` 가운데. 결정적 규칙이 있으면 확신할 수 있는 것만 지면에 그리고
+    나머지는 held로 보낼 수 있다.
+    """
+    out = []
+    toks = kiwi.tokenize(text)
+    for a, b in zip(toks, toks[1:]):
+        if a.tag != "ETM":
+            continue
+        if not (b.tag == "NNB" or (b.tag.startswith("NN") and b.form in DEP_NOUNS)):
+            continue
+        gap = text[a.start + a.len:b.start]
+        if gap:                       # 이미 띄어 썼으면 오류가 아니다
+            continue
+        st, en = word_at(text, b.start)
+        if en <= st:
+            continue
+        out.append(make("space", text, text[st:en], en,
+                        reason="'%s'는 앞말과 띄어 쓴다" % b.form,
+                        severity="높음"))
+    return out
+
+
+def rule_particle_boundary(text, kiwi):
+    """조사 바로 뒤에 체언·용언·부사가 붙어 있으면 어절 경계다. 띄움표.
+
+    조사는 어절을 닫는다. 그 뒤에 새 낱말이 공백 없이 이어지면 두 어절을 붙여 쓴
+    것이다 — `오늘의일기`, `나의재능`, `친구들과함께`, `밥을먹었다`.
+
+    조사 연쇄(`학교에서는` = JKB + JX)와 조사 없는 합성어(`놀이동산에`)는 걸리지
+    않는다. 근거가 품사에 있어서 철자 오류에 흔들리지 않는다.
+    """
+    out = []
+    toks = kiwi.tokenize(text)
+    for a, b in zip(toks, toks[1:]):
+        if not a.tag.startswith("J"):
+            continue
+        if not (b.tag.startswith("NN") or b.tag.startswith("V")
+                or b.tag.startswith("MA") or b.tag == "NP" or b.tag == "NR"):
+            continue
+        if text[a.start + a.len:b.start]:      # 이미 띄었으면 오류가 아니다
+            continue
+        st, en = word_at(text, b.start)
+        if en <= st:
+            continue
+        out.append(make("space", text, text[st:en], en,
+                        reason="조사 '%s' 뒤는 띄어 쓴다" % a.form, severity="높음"))
     return out
 
 
@@ -177,11 +241,23 @@ def rule_indent(text):
 
 
 def rule_layer(text, kiwi):
-    """띄움표는 상한을 둔다. kiwi.space()가 칸을 다 채우면 다른 부호가 지면에 못 앉는다."""
-    spacing = rule_spacing(text, kiwi)
-    joins = [c for c in spacing if c["kind"] == "join"]
-    spaces = [c for c in spacing if c["kind"] == "space"][:MAX_RULE_SPACE]
-    return joins + rule_sentence_end(text, kiwi) + rule_indent(text) + spaces
+    """결정적 규칙은 그리고, kiwi.space() 단독 제안은 held로 보낸다.
+
+    예전에는 kiwi 제안을 상한 4개까지 지면에 그렸다. 상한은 홍수를 가릴 뿐 오탐을
+    없애지 못했고, 문서 순서로 잘라서 뒤쪽의 맞는 지적을 버리고 앞쪽 오탐을 남겼다.
+    실측(초등 3학년 일기): 제안 11건 중 결정적으로 설명되는 것은 2건뿐이고, 나머지는
+    `채고로`·`떡복기`·`놀이동산`처럼 철자 오류 자리에서 형태소 분석이 무너져 나온
+    헛짚음이었다.
+
+    오류유형 카탈로그의 오탐 억제 원칙 5가 이것이다 — 띄어쓰기 교정기는 맞춤법
+    검사기가 아니다. 확신도가 낮은 제안은 지면에 그리지 않는다.
+    """
+    certain = dedupe(rule_dependent_noun(text, kiwi)
+                     + rule_particle_boundary(text, kiwi))
+    taken = {(c["kind"], c["target"], c["nth"]) for c in certain}
+    loose = [c for c in rule_spacing(text, kiwi)
+             if (c["kind"], c["target"], c["nth"]) not in taken]
+    return certain + rule_sentence_end(text, kiwi) + rule_indent(text) + loose
 
 
 # ---------------------------------------------------------------- LLM 계층
@@ -339,6 +415,35 @@ def normalize(text, corrections):
     return out, dropped
 
 
+def drop_row_join_spacing(corrections, row_joins):
+    """행 이음매에서는 띄어쓰기를 지적하지 않는다.
+
+    원고지는 행 끝의 띄어쓰기를 **기록하지 않는다.** 어절이 행 끝에서 끝나고 다음 행
+    첫 칸에서 새 어절이 시작해도 공백을 쓰지 않는 것이 관례다. 그래서 격자에서 복원한
+    본문의 이음매는 `곳이아니라`처럼 붙어 있는데, 학생은 규범대로 쓴 것이다. 여기에
+    띄움표를 달면 맞게 쓴 것을 틀렸다고 지적한다.
+
+    반대로 무조건 띄우면 `아이스크|림를`처럼 행을 넘어 이어지던 낱말이 갈라진다.
+    어느 쪽도 맞힐 수 없다. 기록되지 않은 것은 첨삭하지 않는다.
+    """
+    joins = set(row_joins or [])
+    if not joins:
+        return list(corrections), []
+    keep, dropped = [], []
+    for c in corrections:
+        sp = c.get("_span")
+        if sp and c["kind"] in ("space", "join"):
+            at_join = (sp[1] in joins) if c["kind"] == "space" \
+                else any(sp[0] < j < sp[1] for j in joins)
+            if at_join:
+                c = dict(c)
+                c["drop_reason"] = "행 이음매다. 원고지는 이 자리의 띄어쓰기를 기록하지 않는다"
+                dropped.append(c)
+                continue
+        keep.append(c)
+    return keep, dropped
+
+
 def _spans_overlap(a, b):
     return a[0] < b[1] and b[0] < a[1]
 
@@ -448,15 +553,22 @@ def layout_indent(text):
     return 1
 
 
-def assemble(text, rules, llm, refused=None, focus=None, max_items=MAX_SHEET_ITEMS):
+def assemble(text, rules, llm, refused=None, focus=None, max_items=MAX_SHEET_ITEMS,
+             row_joins=None):
     """정규화·검증·겹침·초점. 서버와 라이브러리가 공유하는 유일한 조립기."""
     llm, bogus = normalize(text, llm)
     merged, dropped = verify(text, dedupe(list(rules) + list(llm)))
     dropped += list(refused or []) + bogus
+    merged, joined = drop_row_join_spacing(merged, row_joins)
+    dropped += joined
     merged, clashed = drop_overlaps(merged)
     dropped += clashed
-    drawn, held = focus_filter(merged, focus=focus, max_items=max_items)
-    return drawn, held, dropped
+    # 확신하지 못하는 제안은 지면에 그리지 않는다. 버리지도 않는다 — held로 남겨
+    # 교사가 볼 수 있게 한다. 학생에게 틀린 지적을 주는 것이 안 주는 것보다 나쁘다.
+    sure = [c for c in merged if c.get("confidence", "certain") != "uncertain"]
+    unsure = [c for c in merged if c.get("confidence", "certain") == "uncertain"]
+    drawn, held = focus_filter(sure, focus=focus, max_items=max_items)
+    return drawn, held + unsure, dropped
 
 
 def maybe_llm(text, host, grade="초등 6학년", max_items=8, model=None):
