@@ -247,6 +247,7 @@
   function payloadOut(fmt, audience) {
     return {
       text: S.data.meta.text,
+      title: (S.data.meta && S.data.meta.title) || "",
       corrections: S.data.corrections.map(function (c) {
         return { kind: c.kind, target: c.target, nth: c.nth, text: c.text,
                  reason: c.reason, layer: c.layer, source: c.source, state: c.state };
@@ -372,7 +373,7 @@
   /* ---------------- 사진 입력과 칸 확인 ----------------
      OCR 결과를 곧바로 첨삭에 넣지 않는다. 오인식과 학생 오류를 기계가 구분할 수
      없어서, 확인 없이 첨삭하면 학생이 맞게 쓴 글자를 틀렸다고 배운다.       */
-  var OCRS = { id: null, ncols: 20, pages: [], previews: [] };
+  var OCRS = { id: null, ncols: 20, pages: [], previews: [], title: "" };
 
   function releasePreviews() {
     OCRS.previews.forEach(function (u) { URL.revokeObjectURL(u); });
@@ -408,6 +409,8 @@
         OCRS.id = x.j.ocr_id;
         OCRS.ncols = x.j.ncols || 20;
         OCRS.pages = x.j.pages || [];
+        OCRS.title = x.j.title || "";
+        $("ocr-title").value = OCRS.title;
         renderConfirm(x.j.low_conf || [], x.j.warnings || []);
         showView("confirm");
         $("stateline").textContent = "칸 확인";
@@ -526,7 +529,8 @@
     fetch("/api/ocr/confirm", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ocr_id: OCRS.id, pages: collectGrid() })
+      body: JSON.stringify({ ocr_id: OCRS.id, pages: collectGrid(),
+                             title: $("ocr-title").value })
     }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
       .then(function (x) {
         $("confirm-ocr").disabled = false;
@@ -552,6 +556,8 @@
 
   function runChumsak(ocrId) {
     var text = $("src").value.trim();
+    // 사진 경로에서는 서버가 확인된 제목을 쓴다. 붙여넣기 경로에서만 화면 값을 보낸다.
+    var title = (typeof ocrId === "string" && ocrId) ? "" : (OCRS.title || "");
     var msg = $("compose-msg");
     if (!text) { msg.textContent = "본문을 붙여 넣으세요."; return; }
     if (window.__CHUMSAK__) {
@@ -566,6 +572,7 @@
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         text: text,
+        title: title,
         ocr_id: (typeof ocrId === "string" && ocrId) ? ocrId : null,
         grade: $("grade").value,
         focus: S.focus.length ? S.focus : null,

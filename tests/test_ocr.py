@@ -14,16 +14,43 @@ import ocr_wongoji as OCR         # noqa: E402
 
 
 # ---------------------------------------------------------------- 칸 보존
-def test_normalize_pads_short_row():
+def test_normalize_pads_short_row_and_warns():
+    """짧은 행도 경고를 남긴다. 조용히 채우면 행 길이 위반률의 절반이 안 보인다."""
     rows, notes = OCR.normalize_rows([{"row": 1, "cells": "오늘"}], ncols=20)
+    assert len(rows[0]["cells"]) == 20
+    assert notes and "채웠다" in notes[0]
+
+
+def test_exact_row_length_is_silent():
+    """정확히 온 행은 경고가 없다. 위반률이 늘 100%가 되면 지표가 죽는다."""
+    rows, notes = OCR.normalize_rows([{"row": 1, "cells": "가" * 20}], ncols=20)
     assert len(rows[0]["cells"]) == 20
     assert not notes
 
 
-def test_normalize_truncates_and_warns():
-    rows, notes = OCR.normalize_rows([{"row": 1, "cells": "가" * 25}], ncols=20)
+def test_overflow_characters_are_kept_not_discarded():
+    """넘친 글자를 버리지 않는다. 실측에서 `곳입니다. 정`의 '정'이 이렇게 사라졌다."""
+    rows, notes = OCR.normalize_rows(
+        [{"row": 1, "cells": "사회성과 협동심을 기르는 곳입니다. 정"}], ncols=20)
     assert len(rows[0]["cells"]) == 20
-    assert notes and "잘랐다" in notes[0]
+    assert rows[0]["overflow"] == "정"
+    assert notes and "교사 확인" in notes[0]
+
+
+def test_overflow_reaches_the_teacher():
+    rows, _ = OCR.normalize_rows(
+        [{"row": 1, "cells": "사회성과 협동심을 기르는 곳입니다. 정"}], ncols=20)
+    low = OCR.low_confidence([{"page": 1, "rows": rows}])
+    assert any(c["ch"] == "정" and "넘쳐" in c["why"] for c in low)
+
+
+def test_extra_space_is_dropped_before_any_character():
+    """여분 공백이 있으면 글자 대신 공백을 버린다."""
+    rows, notes = OCR.normalize_rows(
+        [{"row": 1, "cells": "아니라, 여러 친구들과 함께 어울리며 "}], ncols=20)
+    assert rows[0]["cells"] == "아니라, 여러 친구들과 함께 어울리며"
+    assert "overflow" not in rows[0]
+    assert "공백" in notes[0]
 
 
 def test_blank_first_cell_survives_to_text():
@@ -235,3 +262,116 @@ def test_ocr_record_holds_no_image():
     rec = server.load_ocr(oid)
     blob = str(rec)
     assert "image" not in blob and "base64" not in blob
+
+
+# ---------------------------------------------------------------- 제목
+def test_ocr_prompt_puts_title_outside_rows():
+    """제목을 rows에 넣으면 본문 칸이 한 행 밀린다. 계약을 회귀로 묶는다."""
+    assert "title로 낸다" in OCR.OCR_SYSTEM
+    assert "칸 수 표시 숫자" in OCR.OCR_SYSTEM      # 여백의 100·200을 글자로 읽지 않게
+    assert "title" in OCR.ocr_tool_schema(20)["input_schema"]["properties"]
+
+
+def test_read_page_returns_title_separately():
+    class TitleHost(SilentHost):
+        def llm(self, req):
+            self.seen = req
+            return {"tool_use": {"name": "submit_ocr", "input": {
+                "title": "  학교를 꼭 다녀야 하는가 ",
+                "rows": [{"row": 1, "cells": c, "conf": 0.9}
+                         for c in self.cells]}}}
+    page, _w = OCR.read_page(b"x", "image/png", TitleHost([" 학교는 좋다"]))
+    assert page["title"] == "학교를 꼭 다녀야 하는가"
+    assert "학교를" not in OCR.grid_to_text([page])   # 본문에 섞이지 않는다
+
+
+def test_confirm_carries_title_and_teacher_can_fix_it():
+    cli, server = _client()
+    oid, pages = _stage(server, [" 동생가 밥를 먹었다"])
+    rec = server.load_ocr(oid)
+    rec["title"] = "학교를 꼭 다녀야 하는가"
+    server.save_ocr(rec)
+
+    c = cli.post("/api/ocr/confirm", json={"ocr_id": oid, "pages": pages})
+    assert c.json()["title"] == "학교를 꼭 다녀야 하는가"
+
+    c2 = cli.post("/api/ocr/confirm",
+                  json={"ocr_id": oid, "pages": pages, "title": "학교는 꼭 다녀야 하는가"})
+    assert c2.json()["title"] == "학교는 꼭 다녀야 하는가"
+
+
+def test_title_is_drawn_but_never_carries_a_mark():
+    """제목은 문단이 아니다. 부호가 붙으면 rule_indent 오탐이 되살아난다."""
+    cli, _server = _client()
+    r = cli.post("/api/chumsak",
+                 json={"text": " 동생가 밥를 먹었다", "title": "학교를 꼭 다녀야 하는가"})
+    assert r.status_code == 200
+    data = r.json()["data"]
+    toks = "".join(c["tok"] for c in data["cells"])
+    assert "학교를" in toks                                   # 지면에 있다
+    # 제목 칸은 출처가 없다(src=None). 부호는 여기 앵커를 못 잡는다.
+    title_rows = {c["r"] for c in data["cells"]
+                  if c["tok"].strip() and c.get("src") is None}
+    body_rows = {c["r"] for c in data["cells"] if c.get("src") is not None}
+    assert title_rows and body_rows and max(title_rows) < min(body_rows)
+    assert all(c["target"] not in ("학교를", "학교") for c in data["corrections"])
+
+
+def test_no_llm_env_actually_stops_paid_calls():
+    """get_host만 이 변수를 보던 시절, run_pipeline이 무시하고 호출을 내보냈다."""
+    import llm_host as LH
+    assert os.environ.get("CHUMSAK_NO_LLM")
+    assert list(LH.iter_hosts()) == []
+
+
+# ---------------------------------------------------------------- 행 이음매
+def test_grid_to_text_reports_row_joins():
+    """원고지는 행 끝의 띄어쓰기를 기록하지 않는다. 자리만 남긴다."""
+    rows, _ = OCR.normalize_rows([
+        {"row": 1, "cells": " 학교는 단순히 지식을 배우는 곳이"},
+        {"row": 2, "cells": "아니라, 여러 친구들과 함께 어울리며"},
+    ], ncols=20)
+    text, joins = OCR.grid_to_text([{"page": 1, "rows": rows}], with_joins=True)
+    assert "곳이아니라" in text
+    assert joins == [19]
+    assert text[19:22] == "아니라"
+
+
+def test_paragraph_break_is_not_a_join():
+    rows, _ = OCR.normalize_rows([
+        {"row": 1, "cells": "비가 왔다."},
+        {"row": 2, "cells": " 그래서 집에 갔다."},
+    ], ncols=20)
+    _text, joins = OCR.grid_to_text([{"page": 1, "rows": rows}], with_joins=True)
+    assert joins == []          # 문단이 바뀌면 이음매가 아니다
+
+
+def test_row_join_does_not_get_a_spacing_mark():
+    """`곳이|아니라`는 학생이 규범대로 쓴 것이다. 띄움표를 달면 오탐이다."""
+    import chumsak_app as CA
+    text = " 학교는 단순히 지식을 배우는 곳이아니라, 여러 친구들과 함께 어울리며"
+    fake = [CA.make("space", text, "곳이", 19,
+                    reason="'곳이' 뒤를 띄어 써야 한다")]
+    kept, dropped = CA.verify(text, fake)
+    kept, joined = CA.drop_row_join_spacing(kept, [19])
+    assert kept == [] and joined and "행 이음매" in joined[0]["drop_reason"]
+
+    # 이음매가 아닌 자리의 띄움표는 그대로 산다
+    kept2, _d = CA.verify(text, fake)
+    kept2, joined2 = CA.drop_row_join_spacing(kept2, [5])
+    assert len(kept2) == 1 and joined2 == []
+
+
+def test_confirmed_ocr_suppresses_row_join_spacing_end_to_end():
+    cli, server = _client()
+    oid, pages = _stage(server, [" 학교는 단순히 지식을 배우는 곳이",
+                                 "아니라, 여러 친구들과 함께 어울리며"])
+    c = cli.post("/api/ocr/confirm", json={"ocr_id": oid, "pages": pages})
+    assert c.json()["row_joins"] == [19]
+
+    r = cli.post("/api/chumsak", json={"ocr_id": oid})
+    assert r.status_code == 200
+    body = r.json()
+    assert not any(x["kind"] == "space" and x["target"] == "곳이"
+                   for x in body["data"]["corrections"])
+    assert any("행 이음매" in (g.get("drop_reason") or "") for g in body["gate"])

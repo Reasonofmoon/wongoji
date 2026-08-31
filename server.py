@@ -26,8 +26,8 @@ from pydantic import BaseModel, Field
 
 import llm_host as LH
 import wongoji_render as WR
-from server_config import (DEMO_TEXT, MAX_TEXT, OUT, WEB_DIR, load_dotenv,
-                           load_samples)
+from server_config import (DEMO_TEXT, MAX_TEXT, MAX_TITLE, OUT, WEB_DIR,
+                           load_dotenv, load_samples)
 from server_store import (latest_session_id, load_ocr, load_session,  # noqa: F401
                           save_ocr, save_session, session_count)
 from server_pipeline import (get_host, get_kiwi, make_spec,  # noqa: F401
@@ -47,10 +47,12 @@ class ChumsakIn(BaseModel):
     llm_items: int = 8
     indirect: bool = False
     ocr_id: str | None = None
+    title: str = ""
 
 
 class ExportIn(BaseModel):
     text: str
+    title: str = ""
     corrections: list[dict]
     review: dict = Field(default_factory=dict)
     format: str = "png"
@@ -75,7 +77,16 @@ def api_chumsak(body: ChumsakIn):
             return JSONResponse(
                 {"error": "확인하지 않은 인식 결과입니다. 칸을 확인한 뒤 첨삭하세요."},
                 status_code=409)
-        text = (rec.get("text") or "").strip()
+        raw = rec.get("text") or ""
+        text = raw.strip()
+        title = (rec.get("title") or "").strip()
+        # strip()이 앞을 깎으면 이음매 오프셋이 그만큼 밀린다.
+        shift = len(raw) - len(raw.lstrip())
+        row_joins = [j - shift for j in (rec.get("row_joins") or []) if j >= shift]
+    else:
+        title = (body.title or "").strip()
+        row_joins = None
+    title = title[:MAX_TITLE]
     if not text:
         return JSONResponse({"error": "본문이 비어 있습니다."}, status_code=400)
     if len(text) > MAX_TEXT:
@@ -83,11 +94,12 @@ def api_chumsak(body: ChumsakIn):
                              % (len(text), MAX_TEXT)}, status_code=400)
     t0 = time.time()
     res = run_pipeline(text, grade=body.grade, focus=body.focus,
-                       llm_items=body.llm_items, indirect=body.indirect)
+                       llm_items=body.llm_items, indirect=body.indirect,
+                       title=title, row_joins=row_joins)
     sid = uuid.uuid4().hex[:12]
     save_session(sid, res)
     return {"session": sid, "svg": res["svg"], "data": res["data"],
-            "gate": res["gate"], "counts": res["counts"],
+            "gate": res["gate"], "counts": res["counts"], "title": title,
             "elapsed_s": round(time.time() - t0, 2)}
 
 
@@ -141,7 +153,8 @@ def api_export(body: ExportIn):
         return JSONResponse({"error": "승인된 항목이 없습니다."}, status_code=400)
     fmt = "pdf" if body.format == "pdf" or body.audience == "student" else "png"
     name = "chumsak_%s.%s" % (uuid.uuid4().hex[:8], fmt)
-    spec = make_spec(body.text, draw, body.review, extra={
+    spec = make_spec(body.text, draw, body.review, title=(body.title or "").strip(),
+                     extra={
         "figure_title": "첨삭본",
         "out": os.path.join(OUT, name),
         "caption": "교사 검토 완료 · 승인 %d건, 되살림 %d건"

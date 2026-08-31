@@ -24,6 +24,7 @@ os.makedirs(SESS_DIR, exist_ok=True)
 os.makedirs(OCR_DIR, exist_ok=True)
 
 MAX_TEXT = 4000
+MAX_TITLE = 60          # 제목 한 줄. 원고지 한 행을 넘기지 않는다
 MAX_IMAGE_BYTES = 8 * 1024 * 1024
 MAX_UPLOAD_PAGES = 12
 

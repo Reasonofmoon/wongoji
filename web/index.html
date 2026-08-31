@@ -7,7 +7,7 @@
 <link rel="icon" href="data:,">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=Nanum+Gothic:wght@400;700&display=swap">
-<link rel="stylesheet" href="app.css?v=74d258f0">
+<link rel="stylesheet" href="app.css?v=6947556a">
 </head>
 <body>
 <header class="top">
@@ -78,6 +78,10 @@
         <h2 class="pane-title">읽은 칸 <span class="hint-inline">한 칸이 한 글자입니다. 빈 칸은 비워 둡니다</span></h2>
         <span id="confirm-count" class="stateline"></span>
       </div>
+      <label class="ocrtitle">
+        <span>제목 <span class="hint-inline">학생이 제목 칸에 쓴 그대로. 없으면 비워 둡니다</span></span>
+        <input id="ocr-title" type="text" maxlength="60" placeholder="(제목 없음)">
+      </label>
       <div id="ocrgrid" class="ocrgrid"></div>
       <ul id="ocrwarn" class="warnlist"></ul>
       <div class="foot">
@@ -168,6 +172,6 @@
   </div>
 </div>
 
-<script src="app.js?v=673d51c4"></script>
+<script src="app.js?v=b76651ec"></script>
 </body>
 </html>

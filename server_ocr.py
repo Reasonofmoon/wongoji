@@ -14,7 +14,8 @@ from pydantic import BaseModel
 
 import llm_host as LH
 import ocr_wongoji as OCR
-from server_config import MAX_IMAGE_BYTES, MAX_TEXT, MAX_UPLOAD_PAGES
+from server_config import (MAX_IMAGE_BYTES, MAX_TEXT, MAX_TITLE,
+                           MAX_UPLOAD_PAGES)
 from server_store import load_ocr, save_ocr
 
 router = APIRouter()
@@ -23,6 +24,7 @@ router = APIRouter()
 class OcrConfirmIn(BaseModel):
     ocr_id: str
     pages: list[dict]
+    title: str | None = None       # 교사가 고친 제목. None이면 인식값을 그대로 쓴다
 
 
 @router.post("/api/ocr")
@@ -67,11 +69,15 @@ async def api_ocr(files: list[UploadFile] = File(...)):
             {"error": "사진을 읽지 못했습니다. 붙여넣기로 입력할 수 있습니다.",
              "detail": errors[:3]}, status_code=502)
 
+    # 제목은 첫 장에서만 받는다. 뒷장의 제목 칸은 대개 비어 있다.
+    title = next((p.get("title") for p in pages if p.get("title")), "")
+
     oid = uuid.uuid4().hex[:12]
     rec = {"id": oid, "created": time.time(), "ncols": OCR.NCOLS, "pages": pages,
-           "warnings": warnings + errors, "confirmed": False, "text": None}
+           "title": title, "warnings": warnings + errors, "confirmed": False,
+           "text": None}
     save_ocr(rec)
-    return {"ocr_id": oid, "ncols": OCR.NCOLS, "pages": pages,
+    return {"ocr_id": oid, "ncols": OCR.NCOLS, "pages": pages, "title": title,
             "low_conf": OCR.low_confidence(pages),
             "warnings": rec["warnings"], "confirmed": False}
 
@@ -89,14 +95,20 @@ def api_ocr_confirm(body: OcrConfirmIn):
                       "ncols": rec.get("ncols") or OCR.NCOLS, "rows": rows})
     if not pages:
         return JSONResponse({"error": "확인할 칸이 없습니다."}, status_code=400)
-    text = OCR.grid_to_text(pages)
+    title = body.title if body.title is not None else (rec.get("title") or "")
+    title = title.strip()[:MAX_TITLE]
+    # 행 이음매를 함께 남긴다. 원고지가 기록하지 않는 띄어쓰기 자리이고,
+    # 엔진은 그 자리에서 띄어쓰기를 지적하지 않는다.
+    text, row_joins = OCR.grid_to_text(pages, rec.get("ncols") or OCR.NCOLS,
+                                       with_joins=True)
     if not text.strip():
         return JSONResponse({"error": "본문이 비어 있습니다."}, status_code=400)
     if len(text) > MAX_TEXT:
         return JSONResponse({"error": "본문이 너무 깁니다(%d자). %d자까지."
                              % (len(text), MAX_TEXT)}, status_code=400)
-    rec.update({"pages": pages, "text": text, "confirmed": True,
+    rec.update({"pages": pages, "text": text, "title": title,
+                "row_joins": row_joins, "confirmed": True,
                 "confirmed_at": time.time()})
     save_ocr(rec)
-    return {"ocr_id": rec["id"], "text": text, "confirmed": True,
-            "chars": len(text)}
+    return {"ocr_id": rec["id"], "text": text, "title": title, "confirmed": True,
+            "row_joins": row_joins, "chars": len(text)}

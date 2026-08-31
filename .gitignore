@@ -6,7 +6,6 @@ out/
 data/sessions/*.json
 data/ocr/*.json
 data/settings.json
-_*.json
 uvicorn.log
 .pytest_cache/
 .playwright-mcp/
@@ -15,3 +14,9 @@ compose-*.png
 review-*.png
 _workspace/
 .bkit/
+
+# 학생 손글씨 원본은 커밋하지 않는다
+tests/corpus/ocr/*.jpg
+tests/corpus/ocr/*.jpeg
+tests/corpus/ocr/*.png
+tests/corpus/ocr/*.heic

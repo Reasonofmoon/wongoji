@@ -213,3 +213,13 @@ main{display:grid;grid-template-columns:minmax(0,1fr) 420px;gap:18px;padding:18p
   border-left:3px solid var(--warn);font-size:12px;color:var(--mut);line-height:1.6}
 .trialline:empty{display:none}
 .trialline b{color:var(--ink)}
+
+
+/* 확인 화면의 제목 칸. 본문 격자 바깥이라 시각적으로도 떼어 놓는다. */
+.ocrtitle { display: block; margin: 0 0 10px; }
+.ocrtitle > span { display: block; font-size: 13px; color: #555; margin-bottom: 4px; }
+.ocrtitle input {
+  width: 100%; box-sizing: border-box; padding: 7px 9px; font-size: 15px;
+  border: 1px solid #c8c8c8; border-radius: 4px; background: #fff;
+}
+.ocrtitle input:focus { outline: 2px solid #7aa7d8; outline-offset: -1px; }

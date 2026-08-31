@@ -27,16 +27,25 @@ def get_host():
     return LH.get_host()
 
 
-def make_spec(text, drawn, review, extra=None):
+def make_spec(text, drawn, review, extra=None, title=None):
+    """제목은 본문 바깥이다.
+
+    렌더러가 제목을 가운데 정렬로 따로 앉히고 `base=-1`을 주어 부호가 붙지 않는다.
+    본문에 섞으면 첫 행이 밀리고 `rule_indent`가 제목을 문단으로 보아 들여쓰기표를
+    잘못 단다. 원고지에서 제목 행은 문단이 아니다.
+    """
     spec = {"text": text, "indent": CA.layout_indent(text), "ncols": 20,
             "double_space": True,
             "corrections": drawn, "review": review or {}}
+    if title:
+        spec["title"] = title
     if extra:
         spec.update(extra)
     return spec
 
 
-def run_pipeline(text, grade="초등 6학년", focus=None, llm_items=8, indirect=False):
+def run_pipeline(text, grade="초등 6학년", focus=None, llm_items=8, indirect=False,
+                 title=None, row_joins=None):
     """규칙 계층 + (가능하면) LLM 계층 -> 게이트 -> SVG."""
     kiwi = get_kiwi()
     rules = CA.rule_layer(text, kiwi)
@@ -54,10 +63,11 @@ def run_pipeline(text, grade="초등 6학년", focus=None, llm_items=8, indirect
         refused = [{"kind": "-", "target": "", "reason": "",
                     "drop_reason": "LLM 계층 실패: " + " | ".join(errors)}]
     drawn, held, dropped = CA.assemble(text, rules, llm, refused=refused,
-                                       focus=focus, max_items=CA.MAX_SHEET_ITEMS)
+                                       focus=focus, max_items=CA.MAX_SHEET_ITEMS,
+                                       row_joins=row_joins)
     if indirect:
         drawn = CA.to_indirect(drawn)
-    spec = make_spec(text, drawn, review)
+    spec = make_spec(text, drawn, review, title=title)
     built = WS.build(spec)
     return {"svg": built["svg"], "data": built["data"],
             "gate": CA.strip_span(dropped),
