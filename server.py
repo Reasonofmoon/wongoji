@@ -24,6 +24,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+import chumsak_app as CA
 import llm_host as LH
 import wongoji_render as WR
 from server_config import (DEMO_TEXT, MAX_TEXT, MAX_TITLE, OUT, WEB_DIR,
@@ -42,7 +43,7 @@ app.include_router(server_ocr.router)
 
 class ChumsakIn(BaseModel):
     text: str = ""
-    grade: str = "초등 6학년"
+    grade: str = CA.DEFAULT_GRADE
     focus: list[str] | None = None
     llm_items: int = 8
     indirect: bool = False
@@ -67,6 +68,11 @@ class SettingsIn(BaseModel):
 
 @app.post("/api/chumsak")
 def api_chumsak(body: ChumsakIn):
+    # 학년은 LLM 과제문에 그대로 들어가고 학교급 지침을 고른다. 임의 문자열을
+    # 통과시키면 지침이 조용히 초등으로 떨어지고, 교사는 이유를 알 수 없다.
+    if body.grade not in CA.GRADES:
+        return JSONResponse({"error": "알 수 없는 학년입니다: %s" % body.grade,
+                             "grades": list(CA.GRADES)}, status_code=400)
     text = (body.text or "").strip()
     if body.ocr_id:
         # 사진에서 온 원고는 교사가 확인한 본문만 쓴다. 클라이언트가 보낸 text는 버린다.

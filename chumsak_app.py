@@ -89,6 +89,41 @@ MAX_SHEET_ITEMS = 16
 
 
 # ---------------------------------------------------------------- helpers
+# ---------------------------------------------------------------- 학년
+# 정본 학년 목록. 화면 <select>, samples.json, 골드 코퍼스가 모두 이 문자열을 쓴다.
+# 코퍼스가 이미 '초등 N학년'·'중학교 N학년'을 쓰고 있어 그 어휘를 따랐다.
+GRADES = (
+    "초등 3학년", "초등 4학년", "초등 5학년", "초등 6학년",
+    "중학교 1학년", "중학교 2학년", "중학교 3학년",
+    "고등학교 1학년", "고등학교 2학년", "고등학교 3학년",
+)
+DEFAULT_GRADE = "초등 6학년"
+
+# 학교급별 내용 첨삭 초점. 표기(O1~O10)는 학년과 무관하게 전수로 본다 —
+# 맞춤법에 학년별 정답이 따로 있지 않다. 달라지는 것은 내용 층이다.
+SCHOOL_GUIDE = {
+    "초등": "문장을 끝까지 맺었는지, 낱말이 뜻에 맞는지, 겪은 일이 차례대로 놓였는지를 본다. "
+            "글의 구조를 통째로 바꾸라고 하지 마라. 반복과 강조는 이 나이의 문체다.",
+    "중학교": "문단이 한 화제로 묶였는지, 주어와 서술어가 호응하는지, 겹말과 상투어가 없는지를 본다. "
+              "근거 없이 단정한 문장이 있으면 짚는다.",
+    "고등학교": "주장과 근거가 이어지는지, 문단 사이 논리가 건너뛰지 않는지, 개념어를 일관되게 "
+                "쓰는지를 본다. 문장 길이와 피동·명사화가 글을 흐리는 곳을 짚는다. "
+                "맞춤법만 지적하고 끝내지 마라.",
+}
+
+
+def school_of(grade):
+    """학년 문자열 -> 학교급. 모르는 값이면 기본 학년의 학교급으로 떨어진다."""
+    for school in SCHOOL_GUIDE:
+        if (grade or "").startswith(school):
+            return school
+    return "초등"
+
+
+def grade_guide(grade):
+    return SCHOOL_GUIDE[school_of(grade)]
+
+
 def nth_of(text, target, end):
     """target이 end에서 끝날 때 그것이 몇 번째 출현인지(0-based)."""
     start = end - len(target)
@@ -270,6 +305,8 @@ target은 본문에서 그대로 복사한다. 본문에 없는 문자열을 쓰
 LLM_TASK = """다음은 {grade} 학생이 쓴 글이다. 교정 항목을 최대 {n}개 제출하라.
 가능하면 서로 다른 부호를 섞어라. 띄움표만 내지 마라.
 
+이 학년의 내용 첨삭에서 볼 것: {guide}
+
 부호(kind) — 언제 쓰는지 — target — text
 - space 띄움표: 붙여 쓴 곳을 띄운다. target=바로 앞 어절.
 - join 붙임표: 잘못 띄운 두 어절. target=두 어절과 사이 공백.
@@ -296,12 +333,13 @@ layer는 표기는 "표기", 표현·구성은 "내용". 총평(review)은 잘�
 --- 본문 끝 ---"""
 
 
-def llm_layer(text, host, grade="초등 6학년", max_items=6, model=None):
+def llm_layer(text, host, grade=DEFAULT_GRADE, max_items=6, model=None):
     """host.llm 구조화 출력으로 내용 층 교정 항목과 총평을 얻는다."""
     schema = wongoji_llm_schema(max_items=max_items)
     res = host.llm({
         "messages": [{"role": "user",
-                      "content": LLM_TASK.format(grade=grade, n=max_items, text=text)}],
+                      "content": LLM_TASK.format(grade=grade, n=max_items, text=text,
+                                                 guide=grade_guide(grade))}],
         "system": LLM_SYSTEM,
         "tools": [schema],
         "tool_choice": {"type": "tool", "name": schema["name"]},
@@ -571,7 +609,7 @@ def assemble(text, rules, llm, refused=None, focus=None, max_items=MAX_SHEET_ITE
     return drawn, held + unsure, dropped
 
 
-def maybe_llm(text, host, grade="초등 6학년", max_items=8, model=None):
+def maybe_llm(text, host, grade=DEFAULT_GRADE, max_items=8, model=None):
     """host가 없으면 빈 결과. LLM 실패는 호출측에서 잡는다."""
     if host is None:
         return [], {}, []
@@ -587,7 +625,7 @@ def strip_span(corrections):
     return out
 
 
-def chumsak(text, host, kiwi, out="chumsak.png", grade="초등 6학년", focus=None,
+def chumsak(text, host, kiwi, out="chumsak.png", grade=DEFAULT_GRADE, focus=None,
             indirect=False, max_items=MAX_SHEET_ITEMS, llm_items=8, title=None, meta=None,
             rows_per_sheet=None, model=None, figure_title="첨삭본", caption=None):
     """원문 -> 첨삭본. 반환: {out, drawn, held, dropped, review, render}

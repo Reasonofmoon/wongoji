@@ -65,3 +65,65 @@ def test_grade_matches_the_select_options():
     opts = set(re.findall(r"<option[^>]*>([^<]+)</option>", html))
     for s in _samples().values():
         assert s["grade"] in opts, "%s의 학년 '%s'가 옵션에 없다" % (s["id"], s["grade"])
+
+
+# ---------------------------------------------------------------- 학년
+def test_select_options_match_the_canonical_grade_list():
+    """화면 옵션과 엔진의 정본 목록이 갈라지면 학년이 조용히 안 먹는다.
+
+    실제로 갈라져 있었다 — 화면은 '중등 1학년', 골드 코퍼스는 '중학교 1학년'.
+    samples.json만 검사하는 테스트로는 잡히지 않았다.
+    """
+    import chumsak_app as CA
+    html = io.open(os.path.join(ROOT, "web", "index.html"), encoding="utf-8").read()
+    block = re.search(r'<select id="grade">(.*?)</select>', html, re.S).group(1)
+    opts = re.findall(r"<option[^>]*>([^<]+)</option>", block)
+    assert opts == list(CA.GRADES)
+    assert re.search(r'<option selected>([^<]+)</option>', block).group(1) == CA.DEFAULT_GRADE
+
+
+def test_high_school_grades_are_selectable():
+    import chumsak_app as CA
+    assert "고등학교 3학년" in CA.GRADES
+    assert [g for g in CA.GRADES if g.startswith("고등학교")] == [
+        "고등학교 1학년", "고등학교 2학년", "고등학교 3학년"]
+
+
+def test_corpus_grades_are_canonical():
+    """골드 코퍼스도 같은 어휘를 쓴다. 다르면 학년별 지침이 엉뚱하게 붙는다."""
+    import json
+    import chumsak_app as CA
+    for name in ("seed.jsonl", "showcase.jsonl"):
+        path = os.path.join(ROOT, "tests", "corpus", name)
+        for line in io.open(path, encoding="utf-8"):
+            if line.strip():
+                g = json.loads(line)["grade"]
+                assert g in CA.GRADES, "%s의 학년 '%s'가 정본 목록에 없다" % (name, g)
+
+
+def test_school_guide_differs_by_level():
+    """학교급마다 내용 첨삭에서 볼 것이 다르다. 같으면 학년을 받는 뜻이 없다."""
+    import chumsak_app as CA
+    guides = {CA.grade_guide(g) for g in CA.GRADES}
+    assert len(guides) == 3
+    assert "주장과 근거" in CA.grade_guide("고등학교 2학년")
+    assert "반복과 강조" in CA.grade_guide("초등 3학년")
+
+
+def test_unknown_grade_is_refused_not_silently_defaulted():
+    from fastapi.testclient import TestClient
+    import server
+    cli = TestClient(server.app)
+    r = cli.post("/api/chumsak", json={"text": "동생가 밥를 먹었다", "grade": "중등 1학년"})
+    assert r.status_code == 400
+    assert "고등학교 3학년" in r.json()["grades"]
+
+
+def test_every_grade_runs_end_to_end():
+    import chumsak_app as CA
+    from fastapi.testclient import TestClient
+    import server
+    cli = TestClient(server.app)
+    for g in CA.GRADES:
+        r = cli.post("/api/chumsak", json={"text": " 동생가 밥를 먹었다", "grade": g})
+        assert r.status_code == 200, "%s에서 실패: %s" % (g, r.text)
