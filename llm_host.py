@@ -92,6 +92,26 @@ def _key_for(provider, settings):
     return None
 
 
+# 폴백 공급자는 빠른 모델로 간다. 주 공급자가 느려서 넘어온 상황이라
+# 거기서도 플래그십을 쓰면 함수 제한에 두 번 걸린다.
+FALLBACK_MODEL = {"xai": "grok-4-fast", "gemini": "gemini-3.6-flash",
+                  "openai": "gpt-5.4-mini", "anthropic": "claude-haiku-4-5"}
+
+
+def model_for(provider, settings=None, primary=True):
+    """주 공급자의 모델 결정 순서: 설정 -> CHUMSAK_MODEL -> 카탈로그 기본값.
+
+    get_host()와 iter_hosts()가 이 순서를 따로 구현하다 갈라졌다. iter_hosts()가
+    환경변수를 빠뜨려, 배포 환경에 CHUMSAK_MODEL을 심어도 첨삭 경로에는 먹지
+    않았다. CHUMSAK_NO_LLM 때와 같은 갈라짐이다. 결정은 한 곳에서 한다.
+    """
+    if not primary:
+        return FALLBACK_MODEL.get(provider) or LM.default_model(provider)
+    settings = settings if settings is not None else {}
+    return (settings.get("model") or os.environ.get("CHUMSAK_MODEL")
+            or LM.default_model(provider))
+
+
 def make_host(provider=None, api_key=None, model=None):
     provider = (provider or detect_provider() or "").lower()
     if provider == "gemini":
@@ -102,7 +122,7 @@ def make_host(provider=None, api_key=None, model=None):
         return Host(model=model, api_key=api_key), provider
     if provider == "xai":
         from llm_openai import Host
-        return Host(model=model or os.environ.get("CHUMSAK_MODEL") or LM.default_model("xai"),
+        return Host(model=model or model_for("xai"),
                     api_key=api_key,
                     base_url=os.environ.get("OPENAI_BASE_URL", "https://api.x.ai/v1")), provider
     if provider == "openai":
@@ -134,12 +154,7 @@ def iter_hosts():
         if not key or key in seen_keys:
             continue
         seen_keys.add(key)
-        if provider == primary:
-            model = settings.get("model") or LM.default_model(provider)
-        else:
-            model = {"xai": "grok-4-fast", "gemini": "gemini-3.6-flash",
-                     "openai": "gpt-5.4-mini", "anthropic": "claude-haiku-4-5"
-                     }.get(provider) or LM.default_model(provider)
+        model = model_for(provider, settings, primary=(provider == primary))
         try:
             host, _p = make_host(provider, api_key=key, model=model)
         except Exception:
@@ -160,8 +175,7 @@ def get_host():
         _CACHE = False
         return None
     key = _key_for(provider, settings)
-    model = (settings.get("model") or os.environ.get("CHUMSAK_MODEL")
-             or LM.default_model(provider))
+    model = model_for(provider, settings)
     try:
         host, _p = make_host(provider, api_key=key, model=model)
     except Exception:

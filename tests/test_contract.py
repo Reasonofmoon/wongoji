@@ -127,3 +127,37 @@ def test_every_llm_adapter_bounds_its_call():
         src = open(os.path.join(ROOT, name), encoding="utf-8").read()
         assert "LLM_TIMEOUT" in src, "%s에 호출 예산이 없다" % name
         assert "timeout=120" not in src and "timeout=90" not in src
+
+
+def test_chumsak_model_env_reaches_the_correction_path():
+    """배포 환경변수가 첨삭 경로에 실제로 먹는지 본다.
+
+    iter_hosts()가 CHUMSAK_MODEL을 빠뜨려, 프로덕션에 심어도 안 먹었다.
+    get_host()만 보고 있었다 — CHUMSAK_NO_LLM 때와 같은 갈라짐이다.
+    """
+    import importlib
+    import llm_host as LH
+    prev = os.environ.get("CHUMSAK_MODEL")
+    try:
+        os.environ["CHUMSAK_MODEL"] = "grok-4-fast"
+        importlib.reload(LH)
+        assert LH.model_for("xai", {}) == "grok-4-fast"
+        # 사용자가 화면에서 고른 모델이 환경변수를 이긴다
+        assert LH.model_for("xai", {"model": "grok-4.5"}) == "grok-4.5"
+        # 폴백 공급자는 빠른 모델로 간다. 주 공급자가 느려서 넘어온 상황이다
+        assert LH.model_for("gemini", {}, primary=False) == "gemini-3.6-flash"
+    finally:
+        if prev is None:
+            os.environ.pop("CHUMSAK_MODEL", None)
+        else:
+            os.environ["CHUMSAK_MODEL"] = prev
+        importlib.reload(LH)
+
+
+def test_fallback_models_are_all_in_the_catalog():
+    """폴백 모델 ID가 카탈로그에 없으면 그 경로는 호출과 동시에 죽는다."""
+    import llm_host as LH
+    import llm_models as LM
+    for provider, model in LH.FALLBACK_MODEL.items():
+        ids = {m["id"] for m in LM.CATALOG[provider]["models"]}
+        assert model in ids, "%s의 폴백 모델 %s가 카탈로그에 없다" % (provider, model)
