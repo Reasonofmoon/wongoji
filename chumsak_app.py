@@ -262,11 +262,60 @@ def rule_sentence_end(text, kiwi):
     return out
 
 
-def rule_indent(text):
-    """문단 첫 칸을 비우지 않은 문단에 들여쓰기표를 붙인다."""
+# 제목·이름 행의 끝에 오는 품사. 체언으로 끝나면 문장이 아니다.
+HEADING_TAGS = frozenset(("NNG", "NNP", "NNB", "NP", "NR", "SN", "SL", "XSN"))
+MAX_HEADING_LEN = 30
+SENT_MARKS = ".?!\u2026"
+
+
+def is_heading_line(line, kiwi):
+    """원고지 머리 부분(제목·소속·이름) 한 줄인가.
+
+    원고지에서 제목은 가운데, 소속·이름은 오른쪽에 앉는다. **둘 다 문단이 아니다.**
+    문단으로 보면 들여쓰기표가 붙는데, 첫 칸을 비우는 규칙은 본문 문단의 것이다.
+
+    판별은 마지막 형태소로 한다. 문장은 종결어미나 문장부호로 끝나고, 제목·이름은
+    체언으로 끝난다. 길이나 줄 번호만으로 자르면 짧은 첫 문단을 제목으로 오인해
+    진짜 오류를 놓친다.
+
+    한계: `학교를 꼭 다녀야 하는가` 같은 의문형 제목은 EF로 끝나 잡지 못한다.
+    사진 경로에서는 제목이 본문 바깥의 title 필드로 오므로 문제되지 않는다.
+    """
+    s = (line or "").strip()
+    if not s or len(s) > MAX_HEADING_LEN:
+        return False
+    if any(ch in s for ch in SENT_MARKS):     # 종결부호가 있으면 문장이다
+        return False
+    toks = kiwi.tokenize(s)
+    return bool(toks) and toks[-1].tag in HEADING_TAGS
+
+
+def heading_lines(text, kiwi):
+    """앞에서부터 이어지는 머리 줄의 개수. 최대 둘(제목 + 소속·이름)."""
+    if kiwi is None:
+        return 0
+    lines = (text or "").split("\n")
+    if len(lines) < 2:                        # 한 줄짜리 원고의 유일한 줄은 본문이다
+        return 0
+    n = 0
+    for line in lines[:2]:
+        if n == len(lines) - 1:               # 마지막 줄까지 머리로 보지 않는다
+            break
+        if not is_heading_line(line, kiwi):
+            break
+        n += 1
+    return n
+
+
+def rule_indent(text, kiwi=None):
+    """문단 첫 칸을 비우지 않은 문단에 들여쓰기표를 붙인다.
+
+    제목·소속 행은 건너뛴다. 원고지에서 그 줄들은 문단이 아니다.
+    """
     out, pos = [], 0
-    for para in text.split("\n"):
-        if para.strip() and not para.startswith(" "):
+    skip = heading_lines(text, kiwi)
+    for i, para in enumerate(text.split("\n")):
+        if i >= skip and para.strip() and not para.startswith(" "):
             first = para.split(" ")[0][:3]
             if first:
                 out.append(make("indent", text, first, pos + len(first),
@@ -292,7 +341,7 @@ def rule_layer(text, kiwi):
     taken = {(c["kind"], c["target"], c["nth"]) for c in certain}
     loose = [c for c in rule_spacing(text, kiwi)
              if (c["kind"], c["target"], c["nth"]) not in taken]
-    return certain + rule_sentence_end(text, kiwi) + rule_indent(text) + loose
+    return certain + rule_sentence_end(text, kiwi) + rule_indent(text, kiwi) + loose
 
 
 # ---------------------------------------------------------------- LLM 계층
@@ -580,12 +629,17 @@ def to_indirect(corrections):
 
 
 # ---------------------------------------------------------------- 파이프라인
-def layout_indent(text):
-    """원문 첫 문단이 첫 칸을 비웠으면 1, 아니면 0.
+def layout_indent(text, kiwi=None):
+    """원문 **첫 본문 문단**이 첫 칸을 비웠으면 1, 아니면 0.
 
     부호 유무로 indent를 바꾸지 않는다. 원문을 고쳐 그리면 들여쓰기 오류가 사라진다.
+
+    제목·소속 행은 건너뛴다. 그 줄들은 문단이 아니므로 첫 칸이 차 있는 것이 정상이고,
+    그것으로 본문 들여쓰기를 정하면 학생이 들여 쓴 원고를 지면에 붙여 그린다. 원문을
+    잘못 재현하는 것이라 첨삭본으로서 틀리다. kiwi가 없으면 예전대로 첫 줄을 본다.
     """
-    para = (text or "").split("\n")[0]
+    lines = (text or "").split("\n")
+    para = lines[heading_lines(text, kiwi)] if lines else ""
     if para.strip() and not para.startswith(" "):
         return 0
     return 1
@@ -639,7 +693,7 @@ def chumsak(text, host, kiwi, out="chumsak.png", grade=DEFAULT_GRADE, focus=None
                                     focus=focus, max_items=max_items)
     if indirect:
         drawn = to_indirect(drawn)
-    spec = {"text": text, "indent": layout_indent(text), "ncols": 20,
+    spec = {"text": text, "indent": layout_indent(text, kiwi), "ncols": 20,
             "double_space": True, "rows_per_sheet": rows_per_sheet,
             "corrections": drawn, "review": review, "out": out,
             "figure_title": figure_title,

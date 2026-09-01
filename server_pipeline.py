@@ -29,14 +29,15 @@ def get_host():
     return LH.get_host()
 
 
-def make_spec(text, drawn, review, extra=None, title=None):
+def make_spec(text, drawn, review, extra=None, title=None, kiwi=None):
     """제목은 본문 바깥이다.
 
     렌더러가 제목을 가운데 정렬로 따로 앉히고 `base=-1`을 주어 부호가 붙지 않는다.
     본문에 섞으면 첫 행이 밀리고 `rule_indent`가 제목을 문단으로 보아 들여쓰기표를
     잘못 단다. 원고지에서 제목 행은 문단이 아니다.
     """
-    spec = {"text": text, "indent": CA.layout_indent(text), "ncols": 20,
+    spec = {"text": text, "indent": CA.layout_indent(text, kiwi or get_kiwi()),
+            "ncols": 20,
             "double_space": True,
             "corrections": drawn, "review": review or {}}
     if title:
@@ -76,7 +77,7 @@ def run_pipeline(text, grade="초등 6학년", focus=None, llm_items=8, indirect
                                        row_joins=row_joins)
     if indirect:
         drawn = CA.to_indirect(drawn)
-    spec = make_spec(text, drawn, review, title=title)
+    spec = make_spec(text, drawn, review, title=title, kiwi=kiwi)
     built = WS.build(spec)
     return {"svg": built["svg"], "data": built["data"],
             "gate": CA.strip_span(dropped),

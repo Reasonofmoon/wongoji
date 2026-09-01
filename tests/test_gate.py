@@ -210,3 +210,54 @@ def test_certain_spacing_still_reaches_the_sheet():
     text = "사람이 모를정도로 많았다."
     drawn, _held, _d = CA.assemble(text, CA.rule_layer(text, k), [])
     assert any(c["kind"] == "space" and c["target"] == "모를" for c in drawn)
+
+
+# ---------------------------------------------------------------- 머리 줄
+def test_heading_line_is_told_apart_by_its_last_morpheme():
+    """제목·이름은 체언으로 끝나고 문장은 종결어미·문장부호로 끝난다.
+
+    길이나 줄 번호만으로 자르면 짧은 첫 문단을 제목으로 오인해 진짜 오류를 놓친다.
+    """
+    import chumsak_app as CA
+    k = _kiwi()
+    for head in ("오늘의일기 : 신나는 놀이동산", "3학년 2반 김민준", "우리반 회의"):
+        assert CA.is_heading_line(head, k), head
+    for body in ("오늘 학교에 갔다", "비가 왔다.", "어제 우리 반에서 회의를 하였다."):
+        assert not CA.is_heading_line(body, k), body
+
+
+def test_indent_skips_title_and_name_rows_only():
+    """원고지에서 제목·소속 행은 문단이 아니다. 본문 문단은 그대로 본다."""
+    import chumsak_app as CA
+    k = _kiwi()
+    text = ("오늘의일기 : 신나는 놀이동산\n3학년 2반 김민준\n"
+            "오늘 놀이동산에 갓다.\n 오후에 집에 왔다.")
+    assert CA.heading_lines(text, k) == 2
+    marks = [c["target"] for c in CA.rule_indent(text, k)]
+    assert marks == ["오늘"]          # 본문 첫 문단의 진짜 오류는 살아 있다
+
+
+def test_short_first_paragraph_is_not_mistaken_for_a_title():
+    import chumsak_app as CA
+    k = _kiwi()
+    text = "오늘 학교에 갔다\n그래서 기뻤다."
+    assert CA.heading_lines(text, k) == 0
+    assert [c["target"] for c in CA.rule_indent(text, k)] == ["오늘", "그래서"]
+
+
+def test_single_line_manuscript_keeps_its_only_paragraph():
+    """한 줄짜리 원고의 유일한 줄까지 머리로 보면 들여쓰기 오류를 영영 못 잡는다."""
+    import chumsak_app as CA
+    k = _kiwi()
+    assert CA.heading_lines("우리반 회의", k) == 0
+    assert [c["target"] for c in CA.rule_indent("우리반 회의", k)] == ["우리반"]
+
+
+def test_layout_indent_reads_the_first_body_paragraph():
+    """제목으로 본문 들여쓰기를 정하면 학생이 들여 쓴 원고를 붙여 그린다."""
+    import chumsak_app as CA
+    k = _kiwi()
+    text = "우리반 회의\n 어제 우리 반에서 학급 회의를 하였다."
+    assert CA.layout_indent(text, k) == 1
+    assert CA.layout_indent(text) == 0        # kiwi가 없으면 예전대로 첫 줄을 본다
+    assert CA.layout_indent("오늘 학교에 갔다.\n 그래서 기뻤다.", k) == 0
