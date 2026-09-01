@@ -7,7 +7,6 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-os.environ.setdefault("CHUMSAK_NO_LLM", "1")
 
 import chumsak_app as CA          # noqa: E402
 import ocr_wongoji as OCR         # noqa: E402

@@ -161,3 +161,19 @@ def test_fallback_models_are_all_in_the_catalog():
     for provider, model in LH.FALLBACK_MODEL.items():
         ids = {m["id"] for m in LM.CATALOG[provider]["models"]}
         assert model in ids, "%s의 폴백 모델 %s가 카탈로그에 없다" % (provider, model)
+
+
+def test_paid_call_guard_lives_in_conftest():
+    """스위치가 conftest에 있어야 파일 하나만 돌려도 선다.
+
+    예전에는 test_ocr.py와 test_smoke.py의 모듈 본문에서 각자 세웠다. 전체를 돌리면
+    수집 단계에서 우연히 섰지만, 파일 하나만 돌리면 서지 않아 유료 호출이 나갔다.
+    실측: `pytest tests/test_samples.py` 41.7초 · CPU 6%(94%가 네트워크 대기).
+    CLAUDE.md의 "관련 파일 단위로 실행"이 정확히 그 경로다.
+    """
+    conf = open(os.path.join(ROOT, "tests", "conftest.py"), encoding="utf-8").read()
+    assert 'os.environ.setdefault("CHUMSAK_NO_LLM", "1")' in conf
+    # 같은 결정을 두 곳에서 하지 않는다
+    for name in ("test_ocr.py", "test_smoke.py", "test_samples.py"):
+        src = open(os.path.join(ROOT, "tests", name), encoding="utf-8").read()
+        assert "CHUMSAK_NO_LLM\", \"1\"" not in src, "%s가 스위치를 따로 세운다" % name
