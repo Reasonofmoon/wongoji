@@ -7,6 +7,13 @@
   Google     https://ai.google.dev/gemini-api/docs/models
   OpenAI     https://developers.openai.com/api/docs/models
 """
+import os
+
+
+# LLM 한 번 호출에 허용하는 초. **서버리스 함수 제한보다 짧아야 한다.**
+# 길면 파이프라인이 규칙 계층으로 물러설 기회 없이 함수째 죽고(504), 교사는
+# 첨삭본 대신 오류를 본다. 실측: 클라이언트 120초 > Vercel 60초라 항상 그랬다.
+LLM_TIMEOUT = max(5, int(os.environ.get("CHUMSAK_LLM_TIMEOUT", "25")))
 
 CATALOG = {
     "xai": {

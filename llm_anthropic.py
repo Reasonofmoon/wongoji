@@ -39,7 +39,12 @@ class Host:
     def __init__(self, model=None, api_key=None):
         import anthropic                      # pip install anthropic
         self._model = model or os.environ.get("CHUMSAK_MODEL", DEFAULT_MODEL)
-        self._cli = anthropic.Anthropic(api_key=api_key or os.environ["ANTHROPIC_API_KEY"])
+        import llm_models as LM
+        # SDK 기본 타임아웃은 10분이다. 서버리스 함수가 먼저 죽어 파이프라인이
+        # 규칙 계층으로 물러설 기회를 잃는다.
+        self._cli = anthropic.Anthropic(
+            api_key=api_key or os.environ["ANTHROPIC_API_KEY"],
+            timeout=LM.LLM_TIMEOUT)
 
     def reasoning_model(self):
         return self._model

@@ -4,9 +4,11 @@
 게이트를 여기서 다시 조립하지 않는다. `chumsak_app.assemble`이 단일 조립기다.
 """
 import os
+import time
 
 import chumsak_app as CA
 import llm_host as LH
+import llm_models as LM
 import wongoji_svg as WS
 
 HOST = None          # 커널에서 실행할 때 server_pipeline.HOST = host 로 주입한다
@@ -51,7 +53,14 @@ def run_pipeline(text, grade="초등 6학년", focus=None, llm_items=8, indirect
     rules = CA.rule_layer(text, kiwi)
     llm, review, refused = [], {}, []
     errors = []
+    # 공급자를 차례로 시도하되 전체 예산을 넘기지 않는다. 느린 공급자 하나가
+    # 다음 공급자 몫까지 먹으면 함수 제한에 걸려 규칙 계층 결과마저 못 낸다.
+    budget = LM.LLM_TIMEOUT * 1.5
+    started = time.time()
     for provider, host in LH.iter_hosts():
+        if time.time() - started > budget:
+            errors.append("남은 공급자를 건너뛰었다: LLM 예산 %.0f초 초과" % budget)
+            break
         try:
             llm, review, refused = CA.llm_layer(text, host, grade=grade,
                                                 max_items=llm_items)

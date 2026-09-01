@@ -100,3 +100,30 @@ def test_upload_dependency_is_declared():
     for name in ("requirements.txt", "pyproject.toml"):
         text = open(os.path.join(ROOT, name), encoding="utf-8").read()
         assert "python-multipart" in text, "%s에 python-multipart가 없다" % name
+
+
+# ---------------------------------------------------------------- 배포 예산
+def test_llm_budget_fits_inside_the_serverless_limit():
+    """LLM 예산이 함수 제한보다 길면 파이프라인이 규칙 계층으로 물러설 수 없다.
+
+    실측 사고: 클라이언트 타임아웃 120초 > Vercel maxDuration 60초. 느린 모델을
+    만나면 함수가 먼저 죽어 504가 났고, 교사는 첨삭본 대신 오류를 봤다. 규칙
+    계층은 이미 답을 갖고 있었는데 내보낼 기회가 없었다.
+    """
+    import json
+    import llm_models as LM
+    cfg = json.load(open(os.path.join(ROOT, "vercel.json"), encoding="utf-8"))
+    limit = cfg["functions"]["server.py"]["maxDuration"]
+    total = LM.LLM_TIMEOUT * 1.5          # server_pipeline이 쓰는 전체 예산
+    assert total < limit, (
+        "LLM 전체 예산 %.0f초가 함수 제한 %d초를 넘는다" % (total, limit))
+    # 규칙 계층·형태소 적재·렌더에 남길 여유
+    assert limit - total >= 15
+
+
+def test_every_llm_adapter_bounds_its_call():
+    """타임아웃 없는 어댑터가 하나라도 있으면 그 경로로 504가 돌아온다."""
+    for name in ("llm_openai.py", "llm_gemini.py", "llm_anthropic.py"):
+        src = open(os.path.join(ROOT, name), encoding="utf-8").read()
+        assert "LLM_TIMEOUT" in src, "%s에 호출 예산이 없다" % name
+        assert "timeout=120" not in src and "timeout=90" not in src

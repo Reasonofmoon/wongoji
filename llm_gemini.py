@@ -5,6 +5,8 @@ import os
 import urllib.error
 import urllib.request
 
+import llm_models as LM
+
 DEFAULT_MODEL = "gemini-3.7-flash"
 ENDPOINT = ("https://generativelanguage.googleapis.com/v1beta/models/"
             "%s:generateContent?key=%s")
@@ -95,7 +97,7 @@ class Host:
             headers={"Content-Type": "application/json"},
         )
         try:
-            with urllib.request.urlopen(http_req, timeout=90) as resp:
+            with urllib.request.urlopen(http_req, timeout=LM.LLM_TIMEOUT) as resp:
                 payload = json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
             err = exc.read().decode("utf-8", errors="replace")
